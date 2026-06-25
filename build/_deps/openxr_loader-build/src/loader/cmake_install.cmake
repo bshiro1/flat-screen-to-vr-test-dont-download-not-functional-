@@ -1,4 +1,4 @@
-# Install script for directory: C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-src/src/loader
+# Install script for directory: C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-src/src/loader
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -12,7 +12,7 @@ if(NOT DEFINED CMAKE_INSTALL_CONFIG_NAME)
     string(REGEX REPLACE "^[^A-Za-z0-9_]+" ""
            CMAKE_INSTALL_CONFIG_NAME "${BUILD_TYPE}")
   else()
-    set(CMAKE_INSTALL_CONFIG_NAME "Debug")
+    set(CMAKE_INSTALL_CONFIG_NAME "Release")
   endif()
   message(STATUS "Install configuration: \"${CMAKE_INSTALL_CONFIG_NAME}\"")
 endif()
@@ -33,14 +33,14 @@ if(NOT DEFINED CMAKE_CROSSCOMPILING)
 endif()
 
 if(CMAKE_INSTALL_COMPONENT STREQUAL "Loader" OR NOT CMAKE_INSTALL_COMPONENT)
-  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/lib" TYPE STATIC_LIBRARY FILES "C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/src/loader/openxr_loaderd.lib")
+  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/lib" TYPE STATIC_LIBRARY FILES "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/src/loader/openxr_loader.lib")
 endif()
 
 if(CMAKE_INSTALL_COMPONENT STREQUAL "CMakeConfigs" OR NOT CMAKE_INSTALL_COMPONENT)
   if(EXISTS "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/cmake/OpenXRTargets.cmake")
     file(DIFFERENT _cmake_export_file_changed FILES
          "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/cmake/OpenXRTargets.cmake"
-         "C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/src/loader/CMakeFiles/Export/272ceadb8458515b2ae4b5630a6029cc/OpenXRTargets.cmake")
+         "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/src/loader/CMakeFiles/Export/272ceadb8458515b2ae4b5630a6029cc/OpenXRTargets.cmake")
     if(_cmake_export_file_changed)
       file(GLOB _cmake_old_config_files "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/cmake/OpenXRTargets-*.cmake")
       if(_cmake_old_config_files)
@@ -53,22 +53,22 @@ if(CMAKE_INSTALL_COMPONENT STREQUAL "CMakeConfigs" OR NOT CMAKE_INSTALL_COMPONEN
     endif()
     unset(_cmake_export_file_changed)
   endif()
-  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/cmake" TYPE FILE FILES "C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/src/loader/CMakeFiles/Export/272ceadb8458515b2ae4b5630a6029cc/OpenXRTargets.cmake")
-  if(CMAKE_INSTALL_CONFIG_NAME MATCHES "^([Dd][Ee][Bb][Uu][Gg])$")
-    file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/cmake" TYPE FILE FILES "C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/src/loader/CMakeFiles/Export/272ceadb8458515b2ae4b5630a6029cc/OpenXRTargets-debug.cmake")
+  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/cmake" TYPE FILE FILES "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/src/loader/CMakeFiles/Export/272ceadb8458515b2ae4b5630a6029cc/OpenXRTargets.cmake")
+  if(CMAKE_INSTALL_CONFIG_NAME MATCHES "^([Rr][Ee][Ll][Ee][Aa][Ss][Ee])$")
+    file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/cmake" TYPE FILE FILES "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/src/loader/CMakeFiles/Export/272ceadb8458515b2ae4b5630a6029cc/OpenXRTargets-release.cmake")
   endif()
 endif()
 
 if(CMAKE_INSTALL_COMPONENT STREQUAL "CMakeConfigs" OR NOT CMAKE_INSTALL_COMPONENT)
   file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/cmake" TYPE FILE FILES
-    "C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/src/loader/OpenXRConfig.cmake"
-    "C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/src/loader/OpenXRConfigVersion.cmake"
+    "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/src/loader/OpenXRConfig.cmake"
+    "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/src/loader/OpenXRConfigVersion.cmake"
     )
 endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
 if(CMAKE_INSTALL_LOCAL_ONLY)
-  file(WRITE "C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/src/loader/install_local_manifest.txt"
+  file(WRITE "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/src/loader/install_local_manifest.txt"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
 endif()

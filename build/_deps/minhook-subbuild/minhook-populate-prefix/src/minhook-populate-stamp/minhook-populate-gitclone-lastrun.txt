@@ -3,9 +3,9 @@
 # No other meaning or use of this file is supported.
 
 method=git
-command=C:/Program Files/CMake/bin/cmake.exe;-DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE;-P;C:/Users/shiro/vr-game-converter/build/_deps/minhook-subbuild/minhook-populate-prefix/tmp/minhook-populate-gitclone.cmake
-source_dir=C:/Users/shiro/vr-game-converter/build/_deps/minhook-src
-work_dir=C:/Users/shiro/vr-game-converter/build/_deps
+command=C:/Program Files/CMake/bin/cmake.exe;-DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE;-P;C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/minhook-subbuild/minhook-populate-prefix/tmp/minhook-populate-gitclone.cmake
+source_dir=C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/minhook-src
+work_dir=C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps
 repository=https://github.com/TsudaKageyu/minhook.git
 remote=origin
 init_submodules=TRUE

@@ -3,11 +3,11 @@
 
 cmake_minimum_required(VERSION ${CMAKE_VERSION}) # this file comes with cmake
 
-if(EXISTS "C:/Users/shiro/vr-game-converter/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-gitclone-lastrun.txt" AND EXISTS "C:/Users/shiro/vr-game-converter/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-gitinfo.txt" AND
-  "C:/Users/shiro/vr-game-converter/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-gitclone-lastrun.txt" IS_NEWER_THAN "C:/Users/shiro/vr-game-converter/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-gitinfo.txt")
+if(EXISTS "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-gitclone-lastrun.txt" AND EXISTS "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-gitinfo.txt" AND
+  "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-gitclone-lastrun.txt" IS_NEWER_THAN "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-gitinfo.txt")
   message(VERBOSE
     "Avoiding repeated git clone, stamp file is up to date: "
-    "'C:/Users/shiro/vr-game-converter/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-gitclone-lastrun.txt'"
+    "'C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-gitclone-lastrun.txt'"
   )
   return()
 endif()
@@ -22,12 +22,12 @@ else()
 endif()
 
 execute_process(
-  COMMAND ${CMAKE_COMMAND} -E rm -rf "C:/Users/shiro/vr-game-converter/build/_deps/minhook-src"
+  COMMAND ${CMAKE_COMMAND} -E rm -rf "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/minhook-src"
   RESULT_VARIABLE error_code
   ${maybe_show_command}
 )
 if(error_code)
-  message(FATAL_ERROR "Failed to remove directory: 'C:/Users/shiro/vr-game-converter/build/_deps/minhook-src'")
+  message(FATAL_ERROR "Failed to remove directory: 'C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/minhook-src'")
 endif()
 
 # try the clone 3 times in case there is an odd git clone issue
@@ -37,7 +37,7 @@ while(error_code AND number_of_tries LESS 3)
   execute_process(
     COMMAND "C:/Program Files/Git/cmd/git.exe"
             clone --no-checkout --config "advice.detachedHead=false" "https://github.com/TsudaKageyu/minhook.git" "minhook-src"
-    WORKING_DIRECTORY "C:/Users/shiro/vr-game-converter/build/_deps"
+    WORKING_DIRECTORY "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps"
     RESULT_VARIABLE error_code
     ${maybe_show_command}
   )
@@ -53,7 +53,7 @@ endif()
 execute_process(
   COMMAND "C:/Program Files/Git/cmd/git.exe"
           checkout "master" --
-  WORKING_DIRECTORY "C:/Users/shiro/vr-game-converter/build/_deps/minhook-src"
+  WORKING_DIRECTORY "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/minhook-src"
   RESULT_VARIABLE error_code
   ${maybe_show_command}
 )
@@ -66,22 +66,22 @@ if(init_submodules)
   execute_process(
     COMMAND "C:/Program Files/Git/cmd/git.exe" 
             submodule update --recursive --init 
-    WORKING_DIRECTORY "C:/Users/shiro/vr-game-converter/build/_deps/minhook-src"
+    WORKING_DIRECTORY "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/minhook-src"
     RESULT_VARIABLE error_code
     ${maybe_show_command}
   )
 endif()
 if(error_code)
-  message(FATAL_ERROR "Failed to update submodules in: 'C:/Users/shiro/vr-game-converter/build/_deps/minhook-src'")
+  message(FATAL_ERROR "Failed to update submodules in: 'C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/minhook-src'")
 endif()
 
 # Complete success, update the script-last-run stamp file:
 #
 execute_process(
-  COMMAND ${CMAKE_COMMAND} -E copy "C:/Users/shiro/vr-game-converter/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-gitinfo.txt" "C:/Users/shiro/vr-game-converter/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-gitclone-lastrun.txt"
+  COMMAND ${CMAKE_COMMAND} -E copy "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-gitinfo.txt" "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-gitclone-lastrun.txt"
   RESULT_VARIABLE error_code
   ${maybe_show_command}
 )
 if(error_code)
-  message(FATAL_ERROR "Failed to copy script-last-run stamp file: 'C:/Users/shiro/vr-game-converter/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-gitclone-lastrun.txt'")
+  message(FATAL_ERROR "Failed to copy script-last-run stamp file: 'C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-gitclone-lastrun.txt'")
 endif()

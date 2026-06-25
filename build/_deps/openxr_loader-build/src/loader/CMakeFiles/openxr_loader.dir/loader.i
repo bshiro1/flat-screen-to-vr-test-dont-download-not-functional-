@@ -1,4 +1,4 @@
-#line 1 "C:\\Users\\shiro\\vr-game-converter\\build\\_deps\\openxr_loader-src\\src\\loader\\loader.rc"
+#line 1 "C:\\Users\\shiro\\vr-game-converter\\flat screen to vr (test dont download not functional)\\build\\_deps\\openxr_loader-src\\src\\loader\\loader.rc"
 
 
 
@@ -8858,8 +8858,8 @@
 
 
 
-#line 40 "C:\\Users\\shiro\\vr-game-converter\\build\\_deps\\openxr_loader-src\\src\\loader\\loader.rc"
-#line 41 "C:\\Users\\shiro\\vr-game-converter\\build\\_deps\\openxr_loader-src\\src\\loader\\loader.rc"
+#line 40 "C:\\Users\\shiro\\vr-game-converter\\flat screen to vr (test dont download not functional)\\build\\_deps\\openxr_loader-src\\src\\loader\\loader.rc"
+#line 41 "C:\\Users\\shiro\\vr-game-converter\\flat screen to vr (test dont download not functional)\\build\\_deps\\openxr_loader-src\\src\\loader\\loader.rc"
 
 
 
@@ -8877,10 +8877,10 @@
  PRODUCTVERSION 1, 1, 42, 0
  FILEFLAGSMASK 0x3fL
 
- FILEFLAGS 0x00000001L
 
 
-#line 62 "C:\\Users\\shiro\\vr-game-converter\\build\\_deps\\openxr_loader-src\\src\\loader\\loader.rc"
+ FILEFLAGS 0x0L
+#line 62 "C:\\Users\\shiro\\vr-game-converter\\flat screen to vr (test dont download not functional)\\build\\_deps\\openxr_loader-src\\src\\loader\\loader.rc"
 
  FILEOS 0x00000L
  FILETYPE 0x00000002L

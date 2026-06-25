@@ -114,11 +114,34 @@ bool ImGuiOverlay::init_d3d12(ID3D12Device* device) {
 }
 
 void ImGuiOverlay::begin_frame() {
+    // Re-apply cursor release every frame while visible.
+    // The game's WM_ACTIVATE handler runs after ours (we call it via
+    // CallWindowProcA), so it re-captures the mouse after alt-tab before
+    // our WndProc response takes effect. Re-applying here guarantees the
+    // cursor stays free regardless of game state changes between frames.
+    if (visible_) {
+        ClipCursor(NULL);
+        CURSORINFO ci = { sizeof(ci) };
+        GetCursorInfo(&ci);
+        if (!(ci.flags & CURSOR_SHOWING)) {
+            ShowCursor(TRUE);
+        }
+    }
+
     ImGui_ImplWin32_NewFrame();
     if (api_ == GraphicsAPI::D3D11) {
         ImGui_ImplDX11_NewFrame();
     }
     ImGui::NewFrame();
+
+    // Inject mouse button state directly — many games consume WM_LBUTTONDOWN
+    // before our WndProc hook sees it, leaving ImGui with movement but no clicks.
+    if (visible_) {
+        ImGuiIO& io = ImGui::GetIO();
+        io.AddMouseButtonEvent(0, (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0);
+        io.AddMouseButtonEvent(1, (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0);
+        io.AddMouseButtonEvent(2, (GetAsyncKeyState(VK_MBUTTON) & 0x8000) != 0);
+    }
 }
 
 void ImGuiOverlay::end_frame() {
@@ -172,6 +195,20 @@ void ImGuiOverlay::render() {
     end_frame();
 }
 
+void ImGuiOverlay::set_visible(bool v) {
+    if (visible_ == v) return;
+    visible_ = v;
+    if (!visible_) {
+        cursor_managed_ = false;
+        // Don't restore clip/cursor here — the game re-applies its own state
+        // on its next input frame anyway, and restoring here causes a flicker.
+    }
+}
+
+void ImGuiOverlay::toggle_visible() {
+    set_visible(!visible_);
+}
+
 void ImGuiOverlay::register_window(const std::string& name, DrawCallback cb) {
     custom_windows_[name] = cb;
 }
@@ -185,9 +222,10 @@ LRESULT CALLBACK ImGuiOverlay::wnd_proc_hook(
 {
     auto& self = instance();
 
-    // Toggle overlay with F2
+    // Toggle overlay with F2 — check BEFORE ImGui handler so it always works
     if (msg == WM_KEYDOWN && w_param == self.toggle_key_) {
         self.toggle_visible();
+        return FALSE;  // let the game see the key too (handled or not)
     }
 
     if (self.visible_) {

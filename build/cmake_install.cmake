@@ -1,4 +1,4 @@
-# Install script for directory: C:/Users/shiro/vr-game-converter
+# Install script for directory: C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -12,7 +12,7 @@ if(NOT DEFINED CMAKE_INSTALL_CONFIG_NAME)
     string(REGEX REPLACE "^[^A-Za-z0-9_]+" ""
            CMAKE_INSTALL_CONFIG_NAME "${BUILD_TYPE}")
   else()
-    set(CMAKE_INSTALL_CONFIG_NAME "Debug")
+    set(CMAKE_INSTALL_CONFIG_NAME "Release")
   endif()
   message(STATUS "Install configuration: \"${CMAKE_INSTALL_CONFIG_NAME}\"")
 endif()
@@ -34,39 +34,39 @@ endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for the subdirectory.
-  include("C:/Users/shiro/vr-game-converter/build/_deps/minhook-build/cmake_install.cmake")
+  include("C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/minhook-build/cmake_install.cmake")
 endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for the subdirectory.
-  include("C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/cmake_install.cmake")
+  include("C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/cmake_install.cmake")
 endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for the subdirectory.
-  include("C:/Users/shiro/vr-game-converter/build/_deps/nlohmann_json-build/cmake_install.cmake")
+  include("C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/nlohmann_json-build/cmake_install.cmake")
 endif()
 
 if(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT)
-  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/bin" TYPE SHARED_LIBRARY FILES "C:/Users/shiro/vr-game-converter/build/d3d11_proxy.dll")
+  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/bin" TYPE SHARED_LIBRARY FILES "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/d3d11_proxy.dll")
 endif()
 
 if(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT)
-  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/bin" TYPE SHARED_LIBRARY FILES "C:/Users/shiro/vr-game-converter/build/vr_converter.dll")
+  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/bin" TYPE SHARED_LIBRARY FILES "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/vr_converter.dll")
 endif()
 
 if(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT)
-  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/bin/profiles" TYPE FILE FILES "C:/Users/shiro/vr-game-converter/profiles/default_vr.json")
+  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/bin/profiles" TYPE FILE FILES "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/profiles/default_vr.json")
 endif()
 
 if(CMAKE_INSTALL_COMPONENT STREQUAL "Unspecified" OR NOT CMAKE_INSTALL_COMPONENT)
-  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/bin/tools" TYPE DIRECTORY FILES "C:/Users/shiro/vr-game-converter/tools/")
+  file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/bin/tools" TYPE DIRECTORY FILES "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/tools/")
 endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
 if(CMAKE_INSTALL_LOCAL_ONLY)
-  file(WRITE "C:/Users/shiro/vr-game-converter/build/install_local_manifest.txt"
+  file(WRITE "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/install_local_manifest.txt"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
 endif()
 if(CMAKE_INSTALL_COMPONENT)
@@ -82,6 +82,6 @@ else()
 endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
-  file(WRITE "C:/Users/shiro/vr-game-converter/build/${CMAKE_INSTALL_MANIFEST}"
+  file(WRITE "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
 endif()

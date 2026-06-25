@@ -1,37 +1,31 @@
 # ninja log v6
-3	83	8030707862409060	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-mkdir	2de51ea44eaac7a6
-222	313	8030983170941668	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-patch	818a49f119af75bf
-3	83	8030707862409060	C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-mkdir	2de51ea44eaac7a6
-670	779	8030983175604471	CMakeFiles/openxr_loader-populate-complete	833476fa566fdd03
-83	2506	8030707886650257	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-download	ae6d5e946247e9e2
-83	2506	8030707886650257	C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-download	ae6d5e946247e9e2
-8	222	8030983167946245	C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-update	949427edc80bab74
-670	779	8030983175604471	C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/CMakeFiles/openxr_loader-populate-complete	833476fa566fdd03
-222	313	8030983170941668	C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-patch	818a49f119af75bf
-8	222	8030983167946245	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-update	949427edc80bab74
-313	404	8030983171855720	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-configure	a48f28d23cafbe4
-313	404	8030983171855720	C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-configure	a48f28d23cafbe4
-404	487	8030983172696734	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-build	e1a7110f9db15a6
-670	779	8030983175604471	C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-done	833476fa566fdd03
-404	487	8030983172696734	C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-build	e1a7110f9db15a6
-488	576	8030983173573509	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-install	fc47fa51bc4e7ff0
-488	576	8030983173573509	C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-install	fc47fa51bc4e7ff0
-577	669	8030983174504019	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-test	fc24cc968555c029
-577	669	8030983174504019	C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-test	fc24cc968555c029
-670	779	8030983175604471	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-done	833476fa566fdd03
-7	146	8035257588347093	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-update	949427edc80bab74
-7	146	8035257588347093	C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-update	949427edc80bab74
-147	218	8035257590403845	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-patch	818a49f119af75bf
-147	218	8035257590403845	C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-patch	818a49f119af75bf
 218	289	8035257591113514	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-configure	a48f28d23cafbe4
-218	289	8035257591113514	C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-configure	a48f28d23cafbe4
-290	362	8035257591853656	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-build	e1a7110f9db15a6
-290	362	8035257591853656	C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-build	e1a7110f9db15a6
-362	432	8035257592553004	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-install	fc47fa51bc4e7ff0
-362	432	8035257592553004	C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-install	fc47fa51bc4e7ff0
-432	503	8035257593256733	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-test	fc24cc968555c029
-432	503	8035257593256733	C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-test	fc24cc968555c029
+3	83	8030707862409060	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-mkdir	2de51ea44eaac7a6
+147	218	8035257590403845	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-patch	818a49f119af75bf
 503	589	8035257594125321	CMakeFiles/openxr_loader-populate-complete	833476fa566fdd03
+83	2506	8030707886650257	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-download	ae6d5e946247e9e2
+290	362	8035257591853656	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-build	e1a7110f9db15a6
+7	146	8035257588347093	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-update	949427edc80bab74
+362	432	8035257592553004	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-install	fc47fa51bc4e7ff0
+432	503	8035257593256733	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-test	fc24cc968555c029
 503	589	8035257594125321	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-done	833476fa566fdd03
-503	589	8035257594125321	C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/CMakeFiles/openxr_loader-populate-complete	833476fa566fdd03
-503	589	8035257594125321	C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-done	833476fa566fdd03
+9	55	8041021716558045	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-mkdir	2f0952f7335a8f45
+9	55	8041021716558045	C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-mkdir	2f0952f7335a8f45
+56	3181	8041021747815970	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-download	2fb8a403f0c3d70
+56	3181	8041021747815970	C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-download	2fb8a403f0c3d70
+3182	3287	8041021747871026	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-update	9cd182df8a1feacf
+3182	3287	8041021747871026	C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-update	9cd182df8a1feacf
+3287	3342	8041021749426007	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-patch	b0927a2c59b58c09
+3287	3342	8041021749426007	C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-patch	b0927a2c59b58c09
+3342	3386	8041021749861881	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-configure	2a09d682f2356d92
+3342	3386	8041021749861881	C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-configure	2a09d682f2356d92
+3386	3429	8041021750298187	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-build	585c013daed2a373
+3386	3429	8041021750298187	C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-build	585c013daed2a373
+3429	3472	8041021750729276	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-install	4512635f6c2009bc
+3429	3472	8041021750729276	C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-install	4512635f6c2009bc
+3472	3516	8041021751165588	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-test	526f8a62ae442d60
+3472	3516	8041021751165588	C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-test	526f8a62ae442d60
+3516	3574	8041021751751990	CMakeFiles/openxr_loader-populate-complete	5cd8408603d7b420
+3516	3574	8041021751751990	openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-done	5cd8408603d7b420
+3516	3574	8041021751751990	C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-subbuild/CMakeFiles/openxr_loader-populate-complete	5cd8408603d7b420
+3516	3574	8041021751751990	C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-done	5cd8408603d7b420

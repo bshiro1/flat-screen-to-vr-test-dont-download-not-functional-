@@ -1,4 +1,4 @@
-# Install script for directory: C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-src/include/openxr
+# Install script for directory: C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-src/include/openxr
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -12,7 +12,7 @@ if(NOT DEFINED CMAKE_INSTALL_CONFIG_NAME)
     string(REGEX REPLACE "^[^A-Za-z0-9_]+" ""
            CMAKE_INSTALL_CONFIG_NAME "${BUILD_TYPE}")
   else()
-    set(CMAKE_INSTALL_CONFIG_NAME "Debug")
+    set(CMAKE_INSTALL_CONFIG_NAME "Release")
   endif()
   message(STATUS "Install configuration: \"${CMAKE_INSTALL_CONFIG_NAME}\"")
 endif()
@@ -34,19 +34,19 @@ endif()
 
 if(CMAKE_INSTALL_COMPONENT STREQUAL "Headers" OR NOT CMAKE_INSTALL_COMPONENT)
   file(INSTALL DESTINATION "${CMAKE_INSTALL_PREFIX}/include/openxr" TYPE FILE FILES
-    "C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-src/include/openxr/openxr_platform_defines.h"
-    "C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-src/include/openxr/openxr.h"
-    "C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-src/include/openxr/openxr_loader_negotiation.h"
-    "C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-src/include/openxr/openxr_platform.h"
-    "C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-src/include/openxr/openxr_reflection.h"
-    "C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-src/include/openxr/openxr_reflection_structs.h"
-    "C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-src/include/openxr/openxr_reflection_parent_structs.h"
+    "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-src/include/openxr/openxr_platform_defines.h"
+    "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-src/include/openxr/openxr.h"
+    "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-src/include/openxr/openxr_loader_negotiation.h"
+    "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-src/include/openxr/openxr_platform.h"
+    "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-src/include/openxr/openxr_reflection.h"
+    "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-src/include/openxr/openxr_reflection_structs.h"
+    "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-src/include/openxr/openxr_reflection_parent_structs.h"
     )
 endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
 if(CMAKE_INSTALL_LOCAL_ONLY)
-  file(WRITE "C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/include/openxr/install_local_manifest.txt"
+  file(WRITE "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/include/openxr/install_local_manifest.txt"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
 endif()

@@ -5,8 +5,8 @@
 cmake_minimum_required(VERSION 4.3.3)
 
 # CTest Start Step
-set(CTEST_SOURCE_DIRECTORY "C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-src")
-set(CTEST_BINARY_DIRECTORY "C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build")
+set(CTEST_SOURCE_DIRECTORY "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-src")
+set(CTEST_BINARY_DIRECTORY "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build")
 
 # CTest Update Step
 set(CTEST_UPDATE_COMMAND "C:/Program Files/Git/cmd/git.exe")

@@ -28,8 +28,8 @@ set_property(GLOBAL PROPERTY _CMAKE_FindGit_GIT_EXECUTABLE_VERSION
 include(ExternalProject)
 ExternalProject_Add(minhook-populate
                      "UPDATE_DISCONNECTED" "False" "GIT_REPOSITORY" "https://github.com/TsudaKageyu/minhook.git" "EXTERNALPROJECT_INTERNAL_ARGUMENT_SEPARATOR" "GIT_TAG" "master"
-                    SOURCE_DIR          "C:/Users/shiro/vr-game-converter/build/_deps/minhook-src"
-                    BINARY_DIR          "C:/Users/shiro/vr-game-converter/build/_deps/minhook-build"
+                    SOURCE_DIR          "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/minhook-src"
+                    BINARY_DIR          "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/minhook-build"
                     CONFIGURE_COMMAND   ""
                     BUILD_COMMAND       ""
                     INSTALL_COMMAND     ""

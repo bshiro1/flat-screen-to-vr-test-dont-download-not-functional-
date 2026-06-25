@@ -5,6 +5,7 @@
 #include "render/stereo_renderer.h"
 #include "render/latency_compensator.h"
 #include "render/depth_reprojection.h"
+#include "render/camera_rig.h"
 #include "vr/tracking.h"
 #include "input/input_proxy.h"
 #include "input/input_mapper.h"
@@ -85,10 +86,44 @@ void ConfigEditor::draw_general_tab() {
     if (ImGui::InputText("Profile Name", name_buf, sizeof(name_buf))) {
     }
 
-    ImGui::SeparatorText("VR Settings");
+    ImGui::SeparatorText("Eye Position");
 
-    ImGui::SliderFloat("IPD (m)", &cfg.ipd, 0.054f, 0.074f, "%.4f");
-    ImGui::SliderFloat("World Scale", &cfg.world_scale, 0.5f, 2.0f, "%.2f");
+    auto& rig = CameraRig::instance();
+
+    f32 eye_sep = rig.eye_separation();
+    if (ImGui::SliderFloat("Eye Separation (IPD)", &eye_sep, 0.040f, 0.090f, "%.4f m")) {
+        rig.set_eye_separation(eye_sep);
+        cfg.ipd = eye_sep;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Reset##sep")) {
+        rig.set_eye_separation(0.064f);
+        cfg.ipd = 0.064f;
+    }
+
+    f32 conv = rig.convergence_distance();
+    if (ImGui::SliderFloat("Convergence Distance", &conv, 0.5f, 20.0f, "%.1f m")) {
+        rig.set_convergence_distance(conv);
+        cfg.convergence_distance = conv;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Reset##conv")) { rig.set_convergence_distance(5.0f); cfg.convergence_distance = 5.0f; }
+
+    f32 eye_h = TrackingSystem::instance().eye_height();
+    if (ImGui::SliderFloat("Eye Height", &eye_h, 0.0f, 2.5f, "%.2f m")) {
+        TrackingSystem::instance().set_eye_height(eye_h);
+        cfg.eye_height = eye_h;
+    }
+
+    ImGui::SeparatorText("World");
+
+    f32 ws = rig.world_scale();
+    if (ImGui::SliderFloat("World Scale", &ws, 0.25f, 4.0f, "%.2f")) {
+        rig.set_world_scale(ws);
+        cfg.world_scale = ws;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Reset##ws")) { rig.set_world_scale(1.0f); cfg.world_scale = 1.0f; }
 
     ImGui::SeparatorText("Overlay");
     bool show_overlay = global.enable_overlay();
@@ -208,6 +243,7 @@ void ConfigEditor::draw_tracking_tab() {
     f32 eye_h = tracking.eye_height();
     if (ImGui::SliderFloat("Eye Height (m)", &eye_h, 0.0f, 2.5f, "%.2f")) {
         tracking.set_eye_height(eye_h);
+        cfg.eye_height = eye_h;
     }
 
     if (tracking.has_room_bounds()) {

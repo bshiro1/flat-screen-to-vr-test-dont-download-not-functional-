@@ -315,7 +315,10 @@ bool StereoRenderer::render_d3d11_with_depth(const FrameCapture& capture) {
 
     // Build view setups for each eye using the camera rig
     ViewSetup mono_setup;
-    mono_setup.projection = Matrix4::identity();
+    // Use a real perspective instead of identity — identity causes z_near=0/0=NaN
+    // in mono_to_stereo_projections, producing white frames on every slider drag.
+    mono_setup.projection = Matrix4::perspective(
+        kPi / 2.0f, 16.0f / 9.0f, 0.01f, 1000.0f);
 
     // Apply head tracking to the mono camera
     ViewSetup tracked = camera_rig_.apply_head_tracking(mono_setup, head_pose);

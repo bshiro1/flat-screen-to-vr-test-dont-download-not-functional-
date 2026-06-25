@@ -1,79 +1,77 @@
-C:/Users/shiro/vr-game-converter/build/CMakeFiles/vr_converter.dir
-C:/Users/shiro/vr-game-converter/build/CMakeFiles/d3d11_proxy.dir
-C:/Users/shiro/vr-game-converter/build/CMakeFiles/vrc_injector.dir
-C:/Users/shiro/vr-game-converter/build/CMakeFiles/vrc_test_app.dir
-C:/Users/shiro/vr-game-converter/build/CMakeFiles/vrc_test_d3d12.dir
-C:/Users/shiro/vr-game-converter/build/CMakeFiles/edit_cache.dir
-C:/Users/shiro/vr-game-converter/build/CMakeFiles/rebuild_cache.dir
-C:/Users/shiro/vr-game-converter/build/CMakeFiles/list_install_components.dir
-C:/Users/shiro/vr-game-converter/build/CMakeFiles/install.dir
-C:/Users/shiro/vr-game-converter/build/CMakeFiles/install/local.dir
-C:/Users/shiro/vr-game-converter/build/_deps/minhook-build/CMakeFiles/minhook.dir
-C:/Users/shiro/vr-game-converter/build/_deps/minhook-build/CMakeFiles/edit_cache.dir
-C:/Users/shiro/vr-game-converter/build/_deps/minhook-build/CMakeFiles/rebuild_cache.dir
-C:/Users/shiro/vr-game-converter/build/_deps/minhook-build/CMakeFiles/list_install_components.dir
-C:/Users/shiro/vr-game-converter/build/_deps/minhook-build/CMakeFiles/install.dir
-C:/Users/shiro/vr-game-converter/build/_deps/minhook-build/CMakeFiles/install/local.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/Experimental.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/Nightly.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/Continuous.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/NightlyMemoryCheck.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/NightlyStart.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/NightlyUpdate.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/NightlyConfigure.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/NightlyBuild.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/NightlyTest.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/NightlyCoverage.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/NightlyMemCheck.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/NightlySubmit.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/ExperimentalStart.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/ExperimentalUpdate.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/ExperimentalConfigure.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/ExperimentalBuild.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/ExperimentalTest.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/ExperimentalCoverage.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/ExperimentalMemCheck.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/ExperimentalSubmit.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/ContinuousStart.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/ContinuousUpdate.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/ContinuousConfigure.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/ContinuousBuild.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/ContinuousTest.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/ContinuousCoverage.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/ContinuousMemCheck.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/ContinuousSubmit.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/uninstall.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/edit_cache.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/rebuild_cache.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/list_install_components.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/install.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/CMakeFiles/install/local.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/include/CMakeFiles/edit_cache.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/include/CMakeFiles/rebuild_cache.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/include/CMakeFiles/list_install_components.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/include/CMakeFiles/install.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/include/CMakeFiles/install/local.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/include/openxr/CMakeFiles/generate_openxr_header.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/include/openxr/CMakeFiles/edit_cache.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/include/openxr/CMakeFiles/rebuild_cache.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/include/openxr/CMakeFiles/list_install_components.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/include/openxr/CMakeFiles/install.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/include/openxr/CMakeFiles/install/local.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/src/CMakeFiles/xr_common_generated_files.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/src/CMakeFiles/xr_global_generated_files.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/src/CMakeFiles/edit_cache.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/src/CMakeFiles/rebuild_cache.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/src/CMakeFiles/list_install_components.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/src/CMakeFiles/install.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/src/CMakeFiles/install/local.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/src/loader/CMakeFiles/openxr_loader.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/src/loader/CMakeFiles/edit_cache.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/src/loader/CMakeFiles/rebuild_cache.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/src/loader/CMakeFiles/list_install_components.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/src/loader/CMakeFiles/install.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/src/loader/CMakeFiles/install/local.dir
-C:/Users/shiro/vr-game-converter/build/_deps/nlohmann_json-build/CMakeFiles/edit_cache.dir
-C:/Users/shiro/vr-game-converter/build/_deps/nlohmann_json-build/CMakeFiles/rebuild_cache.dir
-C:/Users/shiro/vr-game-converter/build/_deps/nlohmann_json-build/CMakeFiles/list_install_components.dir
-C:/Users/shiro/vr-game-converter/build/_deps/nlohmann_json-build/CMakeFiles/install.dir
-C:/Users/shiro/vr-game-converter/build/_deps/nlohmann_json-build/CMakeFiles/install/local.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/CMakeFiles/vr_converter.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/CMakeFiles/d3d11_proxy.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/CMakeFiles/vrc_injector.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/CMakeFiles/edit_cache.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/CMakeFiles/rebuild_cache.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/CMakeFiles/list_install_components.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/CMakeFiles/install.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/CMakeFiles/install/local.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/minhook-build/CMakeFiles/minhook.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/minhook-build/CMakeFiles/edit_cache.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/minhook-build/CMakeFiles/rebuild_cache.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/minhook-build/CMakeFiles/list_install_components.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/minhook-build/CMakeFiles/install.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/minhook-build/CMakeFiles/install/local.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/Experimental.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/Nightly.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/Continuous.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/NightlyMemoryCheck.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/NightlyStart.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/NightlyUpdate.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/NightlyConfigure.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/NightlyBuild.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/NightlyTest.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/NightlyCoverage.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/NightlyMemCheck.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/NightlySubmit.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/ExperimentalStart.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/ExperimentalUpdate.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/ExperimentalConfigure.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/ExperimentalBuild.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/ExperimentalTest.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/ExperimentalCoverage.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/ExperimentalMemCheck.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/ExperimentalSubmit.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/ContinuousStart.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/ContinuousUpdate.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/ContinuousConfigure.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/ContinuousBuild.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/ContinuousTest.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/ContinuousCoverage.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/ContinuousMemCheck.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/ContinuousSubmit.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/uninstall.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/edit_cache.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/rebuild_cache.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/list_install_components.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/install.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/CMakeFiles/install/local.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/include/CMakeFiles/edit_cache.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/include/CMakeFiles/rebuild_cache.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/include/CMakeFiles/list_install_components.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/include/CMakeFiles/install.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/include/CMakeFiles/install/local.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/include/openxr/CMakeFiles/generate_openxr_header.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/include/openxr/CMakeFiles/edit_cache.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/include/openxr/CMakeFiles/rebuild_cache.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/include/openxr/CMakeFiles/list_install_components.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/include/openxr/CMakeFiles/install.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/include/openxr/CMakeFiles/install/local.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/src/CMakeFiles/xr_common_generated_files.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/src/CMakeFiles/xr_global_generated_files.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/src/CMakeFiles/edit_cache.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/src/CMakeFiles/rebuild_cache.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/src/CMakeFiles/list_install_components.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/src/CMakeFiles/install.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/src/CMakeFiles/install/local.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/src/loader/CMakeFiles/openxr_loader.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/src/loader/CMakeFiles/edit_cache.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/src/loader/CMakeFiles/rebuild_cache.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/src/loader/CMakeFiles/list_install_components.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/src/loader/CMakeFiles/install.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-build/src/loader/CMakeFiles/install/local.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/nlohmann_json-build/CMakeFiles/edit_cache.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/nlohmann_json-build/CMakeFiles/rebuild_cache.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/nlohmann_json-build/CMakeFiles/list_install_components.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/nlohmann_json-build/CMakeFiles/install.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/nlohmann_json-build/CMakeFiles/install/local.dir

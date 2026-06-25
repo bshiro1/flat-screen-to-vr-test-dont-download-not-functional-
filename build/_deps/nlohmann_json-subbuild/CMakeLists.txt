@@ -28,8 +28,8 @@ set_property(GLOBAL PROPERTY _CMAKE_FindGit_GIT_EXECUTABLE_VERSION
 include(ExternalProject)
 ExternalProject_Add(nlohmann_json-populate
                      "UPDATE_DISCONNECTED" "False" "GIT_REPOSITORY" "https://github.com/nlohmann/json.git" "EXTERNALPROJECT_INTERNAL_ARGUMENT_SEPARATOR" "GIT_TAG" "v3.11.3"
-                    SOURCE_DIR          "C:/Users/shiro/vr-game-converter/build/_deps/nlohmann_json-src"
-                    BINARY_DIR          "C:/Users/shiro/vr-game-converter/build/_deps/nlohmann_json-build"
+                    SOURCE_DIR          "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/nlohmann_json-src"
+                    BINARY_DIR          "C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/nlohmann_json-build"
                     CONFIGURE_COMMAND   ""
                     BUILD_COMMAND       ""
                     INSTALL_COMMAND     ""

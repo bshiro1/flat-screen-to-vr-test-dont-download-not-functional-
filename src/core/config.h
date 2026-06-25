@@ -40,6 +40,7 @@ public:
 
 private:
     Config() = default;
+    void apply_to_subsystems(const ConfigProfile& prof);
     std::unordered_map<std::string, ConfigProfile> profiles_;
     ConfigProfile current_;
     GraphicsAPI detected_api_ = GraphicsAPI::Unknown;

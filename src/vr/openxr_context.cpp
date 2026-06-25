@@ -365,7 +365,7 @@ void OpenXRContext::frame_thread_proc() {
             }
 
             XrSwapchainImageWaitInfo wi = { XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO };
-            wi.timeout = XR_INFINITE_DURATION;
+            wi.timeout = 500'000'000; // 500 ms in nanoseconds — avoids hanging if session is lost
             res = xrWaitSwapchainImage(sc.handle, &wi);
             if (XR_FAILED(res)) {
                 Log::error("xrWaitSwapchainImage eye {} failed: {}", eye, static_cast<int>(res));
@@ -375,12 +375,17 @@ void OpenXRContext::frame_thread_proc() {
         }
 
         // Signal Present thread that images are ready
-        SetEvent(frame_ready_event_);
+        SetEvent(static_cast<HANDLE>(frame_ready_event_));
 
-        // Wait for Present thread to finish rendering
-        WaitForSingleObject(frame_done_event_, INFINITE);
+        // Wait for Present thread to finish rendering (or signal a skip on timeout).
+        // Use a finite timeout so this thread can exit if the session is lost and
+        // the Present thread never calls end_frame (it times out at 25ms, signals
+        // frame_done, and returns — but if it already exited we'd hang forever here).
+        WaitForSingleObject(static_cast<HANDLE>(frame_done_event_), 2000);
 
         if (thread_exit_flag_.load()) break;
+
+        bool rendered = frame_rendered_.load(std::memory_order_acquire);
 
         // Release swapchain images
         for (int eye = 0; eye < 2; eye++) {
@@ -389,36 +394,45 @@ void OpenXRContext::frame_thread_proc() {
             xrReleaseSwapchainImage(sc.handle, &ri);
         }
 
-        // End the frame with projection layers
+        // End the frame. When the Present thread timed out (begin_frame returned
+        // false), it signaled frame_done with rendered=false so we submit 0 layers
+        // rather than a projection layer referencing unrendered swapchain images.
         XrFrameEndInfo fei = { XR_TYPE_FRAME_END_INFO };
         fei.displayTime = fs.predictedDisplayTime;
         fei.environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
 
-        XrCompositionLayerProjection layer = { XR_TYPE_COMPOSITION_LAYER_PROJECTION };
-        layer.space = local_space_;
+        if (rendered) {
+            XrCompositionLayerProjection layer = { XR_TYPE_COMPOSITION_LAYER_PROJECTION };
+            layer.space = local_space_;
 
-        XrCompositionLayerProjectionView proj_views[2] = {};
-        for (int eye = 0; eye < 2; eye++) {
-            auto& sc = swapchains_[eye];
-            proj_views[eye] = { XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW };
-            proj_views[eye].pose = frame_data_.views[eye].pose;
-            proj_views[eye].fov = frame_data_.views[eye].fov;
-            proj_views[eye].subImage.swapchain = sc.handle;
-            proj_views[eye].subImage.imageRect.offset = {0, 0};
-            proj_views[eye].subImage.imageRect.extent = { sc.width, sc.height };
+            XrCompositionLayerProjectionView proj_views[2] = {};
+            for (int eye = 0; eye < 2; eye++) {
+                auto& sc = swapchains_[eye];
+                proj_views[eye] = { XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW };
+                proj_views[eye].pose = frame_data_.views[eye].pose;
+                proj_views[eye].fov = frame_data_.views[eye].fov;
+                proj_views[eye].subImage.swapchain = sc.handle;
+                proj_views[eye].subImage.imageRect.offset = {0, 0};
+                proj_views[eye].subImage.imageRect.extent = { sc.width, sc.height };
+            }
+
+            layer.viewCount = 2;
+            layer.views = proj_views;
+
+            fei.layerCount = 1;
+            const XrCompositionLayerBaseHeader* layers[] = {
+                reinterpret_cast<const XrCompositionLayerBaseHeader*>(&layer) };
+            fei.layers = layers;
+
+            // Flush D3D11 commands so the compositor can see rendered content
+            // Only flush from frame thread when multithread protection is active
+            if (d3d11_context_ && multithread_protected_) d3d11_context_->Flush();
+        } else {
+            // Skipped frame (begin_frame timed out): submit blank frame so the
+            // compositor keeps its internal state consistent.
+            fei.layerCount = 0;
+            fei.layers = nullptr;
         }
-
-        layer.viewCount = 2;
-        layer.views = proj_views;
-
-        fei.layerCount = 1;
-        const XrCompositionLayerBaseHeader* layers[] = {
-            reinterpret_cast<const XrCompositionLayerBaseHeader*>(&layer) };
-        fei.layers = layers;
-
-        // Flush D3D11 commands so the compositor can see rendered content
-        // Only flush from frame thread when multithread protection is active
-        if (d3d11_context_ && multithread_protected_) d3d11_context_->Flush();
 
         res = xrEndFrame(session_, &fei);
         if (XR_FAILED(res)) {
@@ -793,10 +807,15 @@ bool OpenXRContext::begin_frame() {
     if (!session_running_) return false;
     if (!frame_ready_event_) return false;
 
-    // Wait for frame thread to acquire swapchain images (with 1s timeout)
-    DWORD wait = WaitForSingleObject(frame_ready_event_, 1000);
+    // Wait for frame thread to acquire swapchain images.
+    // 25ms timeout: if the compositor is stalled (headset inactive/sleeping),
+    // we unblock quickly so the flatscreen doesn't freeze.
+    DWORD wait = WaitForSingleObject(frame_ready_event_, 25);
     if (wait != WAIT_OBJECT_0) {
-        Log::error("begin_frame: timed out (wait={})", wait);
+        // Signal frame_done so the frame thread is not left deadlocked waiting
+        // for a Present-thread signal that will never come this iteration.
+        frame_rendered_.store(false, std::memory_order_release);
+        if (frame_done_event_) SetEvent(static_cast<HANDLE>(frame_done_event_));
         return false;
     }
 
@@ -813,8 +832,10 @@ bool OpenXRContext::end_frame() {
         d3d11_context_->Flush();
     }
 
-    // Signal frame thread that rendering is done (triggers xrEndFrame)
-    SetEvent(frame_done_event_);
+    // Mark this frame as rendered before signaling so the frame thread
+    // knows to submit a projection layer (vs. submitting 0 layers on a skipped frame).
+    frame_rendered_.store(true, std::memory_order_release);
+    SetEvent(static_cast<HANDLE>(frame_done_event_));
     return true;
 }
 
@@ -885,11 +906,6 @@ bool OpenXRContext::begin_eye_image(i32 eye, u32* out_image_index) {
 
     if (graphics_api_ == GraphicsAPI::D3D11) {
         eye_rtvs_[eye] = sc.d3d11_rtvs[index];
-        if (d3d11_context_) {
-            ID3D11RenderTargetView* rtv =
-                static_cast<ID3D11RenderTargetView*>(eye_rtvs_[eye]);
-            d3d11_context_->OMSetRenderTargets(1, &rtv, nullptr);
-        }
     } else if (graphics_api_ == GraphicsAPI::D3D12 && index < sc.d3d12_rtvs.size()) {
         eye_rtvs_[eye] = reinterpret_cast<void*>(sc.d3d12_rtvs[index].ptr);
     }

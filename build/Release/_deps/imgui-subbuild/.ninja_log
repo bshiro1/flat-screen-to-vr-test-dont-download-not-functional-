@@ -1,0 +1,21 @@
+# ninja log v6
+5	56	8041169767302060	imgui-populate-prefix/src/imgui-populate-stamp/imgui-populate-mkdir	cb741e4e9076aa
+5	56	8041169767302060	C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/Release/_deps/imgui-subbuild/imgui-populate-prefix/src/imgui-populate-stamp/imgui-populate-mkdir	cb741e4e9076aa
+56	24314	8041170009888666	imgui-populate-prefix/src/imgui-populate-stamp/imgui-populate-download	6b9ff256e63e93d1
+56	24314	8041170009888666	C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/Release/_deps/imgui-subbuild/imgui-populate-prefix/src/imgui-populate-stamp/imgui-populate-download	6b9ff256e63e93d1
+24318	24440	8041170009983735	imgui-populate-prefix/src/imgui-populate-stamp/imgui-populate-update	f856fdc8580ccb62
+24318	24440	8041170009983735	C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/Release/_deps/imgui-subbuild/imgui-populate-prefix/src/imgui-populate-stamp/imgui-populate-update	f856fdc8580ccb62
+24440	24488	8041170011635550	imgui-populate-prefix/src/imgui-populate-stamp/imgui-populate-patch	57fa37cde3fe3d6a
+24440	24488	8041170011635550	C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/Release/_deps/imgui-subbuild/imgui-populate-prefix/src/imgui-populate-stamp/imgui-populate-patch	57fa37cde3fe3d6a
+24489	24548	8041170012241059	imgui-populate-prefix/src/imgui-populate-stamp/imgui-populate-configure	986d0b06a20edf99
+24489	24548	8041170012241059	C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/Release/_deps/imgui-subbuild/imgui-populate-prefix/src/imgui-populate-stamp/imgui-populate-configure	986d0b06a20edf99
+24549	24596	8041170012706449	imgui-populate-prefix/src/imgui-populate-stamp/imgui-populate-build	522c9b8a85dc00f2
+24549	24596	8041170012706449	C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/Release/_deps/imgui-subbuild/imgui-populate-prefix/src/imgui-populate-stamp/imgui-populate-build	522c9b8a85dc00f2
+24597	24655	8041170013302051	imgui-populate-prefix/src/imgui-populate-stamp/imgui-populate-install	70580908922dc545
+24597	24655	8041170013302051	C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/Release/_deps/imgui-subbuild/imgui-populate-prefix/src/imgui-populate-stamp/imgui-populate-install	70580908922dc545
+24656	24704	8041170013797570	imgui-populate-prefix/src/imgui-populate-stamp/imgui-populate-test	4e5c545a98185f43
+24656	24704	8041170013797570	C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/Release/_deps/imgui-subbuild/imgui-populate-prefix/src/imgui-populate-stamp/imgui-populate-test	4e5c545a98185f43
+24705	24767	8041170014418212	CMakeFiles/imgui-populate-complete	cd1744417c12ce9a
+24705	24767	8041170014418212	imgui-populate-prefix/src/imgui-populate-stamp/imgui-populate-done	cd1744417c12ce9a
+24705	24767	8041170014418212	C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/Release/_deps/imgui-subbuild/CMakeFiles/imgui-populate-complete	cd1744417c12ce9a
+24705	24767	8041170014418212	C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/Release/_deps/imgui-subbuild/imgui-populate-prefix/src/imgui-populate-stamp/imgui-populate-done	cd1744417c12ce9a

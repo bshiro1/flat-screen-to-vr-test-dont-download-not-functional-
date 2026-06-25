@@ -240,6 +240,8 @@ struct ConfigProfile {
     std::string name = "default";
     f32 ipd = 0.064f;
     f32 world_scale = 1.0f;
+    f32 convergence_distance = 5.0f;
+    f32 eye_height = 1.6f;
     bool enable_head_tracking = true;
     bool enable_chaperone = false;
     f32 fov_override = 0.0f;

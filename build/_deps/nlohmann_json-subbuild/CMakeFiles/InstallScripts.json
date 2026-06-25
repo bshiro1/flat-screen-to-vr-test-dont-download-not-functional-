@@ -1,7 +1,7 @@
 {
 	"InstallScripts" : 
 	[
-		"C:/Users/shiro/vr-game-converter/build/_deps/nlohmann_json-subbuild/cmake_install.cmake"
+		"C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/nlohmann_json-subbuild/cmake_install.cmake"
 	],
 	"Parallel" : false
 }

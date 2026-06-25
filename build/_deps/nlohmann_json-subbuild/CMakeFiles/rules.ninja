@@ -23,7 +23,7 @@ rule CUSTOM_COMMAND
 # Rule for re-running cmake.
 
 rule RERUN_CMAKE
-  command = "C:\Program Files\CMake\bin\cmake.exe" --regenerate-during-build -SC:\Users\shiro\vr-game-converter\build\_deps\nlohmann_json-subbuild -BC:\Users\shiro\vr-game-converter\build\_deps\nlohmann_json-subbuild
+  command = "C:\Program Files\CMake\bin\cmake.exe" --regenerate-during-build -S"C:\Users\shiro\vr-game-converter\flat screen to vr (test dont download not functional)\build\_deps\nlohmann_json-subbuild" -B"C:\Users\shiro\vr-game-converter\flat screen to vr (test dont download not functional)\build\_deps\nlohmann_json-subbuild"
   description = Re-running CMake...
   generator = 1
 

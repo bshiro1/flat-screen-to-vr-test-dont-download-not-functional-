@@ -1,3 +1,3 @@
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/CMakeFiles/openxr_loader-populate.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/CMakeFiles/edit_cache.dir
-C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/CMakeFiles/rebuild_cache.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-subbuild/CMakeFiles/openxr_loader-populate.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-subbuild/CMakeFiles/edit_cache.dir
+C:/Users/shiro/vr-game-converter/flat screen to vr (test dont download not functional)/build/_deps/openxr_loader-subbuild/CMakeFiles/rebuild_cache.dir

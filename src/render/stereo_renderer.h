@@ -63,6 +63,11 @@ public:
     void set_d3d11_device(ID3D11Device* device, ID3D11DeviceContext* ctx) {
         d3d11_device_ = device;
         d3d11_ctx_ = ctx;
+        // DepthReprojection needs the real game device; initialize it here since
+        // StereoRenderer::initialize() runs before bind_d3d11_device() is called.
+        if (!depth_.is_initialized() && device) {
+            depth_.initialize(device);
+        }
     }
 
     void set_d3d11_on12_device(ID3D11On12Device* device) { d3d11_on12_ = device; }

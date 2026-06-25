@@ -143,6 +143,8 @@ private:
     std::atomic<bool> thread_exit_flag_{false};
     void* frame_ready_event_ = nullptr;  // HANDLE, set by frame thread
     void* frame_done_event_ = nullptr;   // HANDLE, set by Present thread
+    // true = Present thread rendered this frame; false = timed out / skipped
+    std::atomic<bool> frame_rendered_{false};
 
     // Data shared between frame thread and Present thread
     FrameThreadData frame_data_;

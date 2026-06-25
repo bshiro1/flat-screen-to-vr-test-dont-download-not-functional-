@@ -395,97 +395,114 @@ bool DepthReprojection::blit_to_eye(const FrameCapture& source,
 
     // ── Save every piece of state we touch ───────────────────────────────────
     // OM
-    ID3D11RenderTargetView*  old_rtv = nullptr;
-    ID3D11DepthStencilView*  old_dsv = nullptr;
-    ID3D11RasterizerState*   old_rs  = nullptr;
-    ID3D11DepthStencilState* old_dss = nullptr;
-    UINT  old_stencil_ref   = 0;
-    ID3D11BlendState* old_bs = nullptr;
+    ID3D11RenderTargetView*  old_rtv  = nullptr;
+    ID3D11DepthStencilView*  old_dsv  = nullptr;
+    ID3D11RasterizerState*   old_rs   = nullptr;
+    ID3D11DepthStencilState* old_dss  = nullptr;
+    UINT  old_stencil_ref    = 0;
+    ID3D11BlendState* old_bs  = nullptr;
     float old_blend_factor[4] = {};
-    UINT  old_sample_mask   = 0;
+    UINT  old_sample_mask    = 0;
+
+    UINT old_vp_count = 1;
+    D3D11_VIEWPORT old_vp = {};
+
+    ID3D11InputLayout* old_il = nullptr;
+    D3D11_PRIMITIVE_TOPOLOGY old_topo = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
+
+    ID3D11VertexShader*   old_vs = nullptr;
+    ID3D11GeometryShader* old_gs = nullptr;
+    ID3D11HullShader*     old_hs = nullptr;
+    ID3D11DomainShader*   old_ds = nullptr;
+    ID3D11PixelShader*    old_ps = nullptr;
+
+    ID3D11ShaderResourceView* old_srvs[2] = {};
+    ID3D11SamplerState*       old_samplers[2] = {};
+    ID3D11Buffer*             old_cb = nullptr;
+
     context_->OMGetRenderTargets(1, &old_rtv, &old_dsv);
     context_->RSGetState(&old_rs);
     context_->OMGetDepthStencilState(&old_dss, &old_stencil_ref);
     context_->OMGetBlendState(&old_bs, old_blend_factor, &old_sample_mask);
-
-    // RS
-    UINT old_vp_count = 1;
-    D3D11_VIEWPORT old_vp = {};
     context_->RSGetViewports(&old_vp_count, &old_vp);
-
-    // IA
-    ID3D11InputLayout* old_il = nullptr;
-    D3D11_PRIMITIVE_TOPOLOGY old_topo = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
     context_->IAGetInputLayout(&old_il);
     context_->IAGetPrimitiveTopology(&old_topo);
-
-    // Shaders
-    ID3D11VertexShader* old_vs = nullptr;
-    ID3D11PixelShader*  old_ps = nullptr;
     context_->VSGetShader(&old_vs, nullptr, nullptr);
+    context_->GSGetShader(&old_gs, nullptr, nullptr);
+    context_->HSGetShader(&old_hs, nullptr, nullptr);
+    context_->DSGetShader(&old_ds, nullptr, nullptr);
     context_->PSGetShader(&old_ps, nullptr, nullptr);
-
-    // PS resources / samplers / CBs
-    ID3D11ShaderResourceView* old_srvs[2] = {};
-    ID3D11SamplerState*       old_samplers[2] = {};
-    ID3D11Buffer*             old_cb = nullptr;
     context_->PSGetShaderResources(0, 2, old_srvs);
     context_->PSGetSamplers(0, 2, old_samplers);
     context_->PSGetConstantBuffers(0, 1, &old_cb);
 
-    // ── Override with known-good blit state ──────────────────────────────────
-    context_->RSSetState(rasterizer_blit_);
-    context_->OMSetDepthStencilState(depth_stencil_blit_, 0);
-    context_->OMSetBlendState(blend_blit_, nullptr, 0xffffffff);
-    context_->OMSetRenderTargets(1, &eye_rtv, nullptr);
+    // ── Override + Draw (exception-safe: __finally always restores) ──────────
+    __try {
+        context_->RSSetState(rasterizer_blit_);
+        context_->OMSetDepthStencilState(depth_stencil_blit_, 0);
+        context_->OMSetBlendState(blend_blit_, nullptr, 0xffffffff);
+        context_->OMSetRenderTargets(1, &eye_rtv, nullptr);
 
-    D3D11_VIEWPORT vp = {};
-    vp.Width    = static_cast<f32>(eye_width);
-    vp.Height   = static_cast<f32>(eye_height);
-    vp.MaxDepth = 1.0f;
-    context_->RSSetViewports(1, &vp);
+        D3D11_VIEWPORT vp = {};
+        vp.Width    = static_cast<f32>(eye_width);
+        vp.Height   = static_cast<f32>(eye_height);
+        vp.MaxDepth = 1.0f;
+        context_->RSSetViewports(1, &vp);
 
-    context_->IASetInputLayout(nullptr);
-    context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        context_->IASetInputLayout(nullptr);
+        context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-    context_->VSSetShader(vs_blit_, nullptr, 0);
-    context_->PSSetShader(ps_blit_, nullptr, 0);
+        context_->VSSetShader(vs_blit_, nullptr, 0);
+        // Null out GS/HS/DS so the game's geometry/tessellation shaders
+        // don't process our fullscreen triangle — a live GS with stream
+        // output would corrupt the game's SO buffer used by the next frame.
+        context_->GSSetShader(nullptr, nullptr, 0);
+        context_->HSSetShader(nullptr, nullptr, 0);
+        context_->DSSetShader(nullptr, nullptr, 0);
+        context_->PSSetShader(ps_blit_, nullptr, 0);
 
-    ID3D11ShaderResourceView* srvs[]    = { game_color_srv_, nullptr };
-    ID3D11SamplerState*       samplers[] = { point_sampler_, linear_sampler_ };
-    context_->PSSetShaderResources(0, 2, srvs);
-    context_->PSSetSamplers(0, 2, samplers);
-    context_->PSSetConstantBuffers(0, 1, &reprojection_cb_);
+        ID3D11ShaderResourceView* srvs[]    = { game_color_srv_, nullptr };
+        ID3D11SamplerState*       samplers[] = { point_sampler_, linear_sampler_ };
+        context_->PSSetShaderResources(0, 2, srvs);
+        context_->PSSetSamplers(0, 2, samplers);
+        context_->PSSetConstantBuffers(0, 1, &reprojection_cb_);
 
-    context_->Draw(3, 0);
+        context_->Draw(3, 0);
+    } __finally {
+        // ── Restore everything ───────────────────────────────────────────────
+        context_->PSSetShaderResources(0, 2, old_srvs);
+        context_->PSSetSamplers(0, 2, old_samplers);
+        context_->PSSetConstantBuffers(0, 1, &old_cb);
+        context_->VSSetShader(old_vs, nullptr, 0);
+        context_->GSSetShader(old_gs, nullptr, 0);
+        context_->HSSetShader(old_hs, nullptr, 0);
+        context_->DSSetShader(old_ds, nullptr, 0);
+        context_->PSSetShader(old_ps, nullptr, 0);
+        context_->IASetInputLayout(old_il);
+        context_->IASetPrimitiveTopology(old_topo);
+        context_->OMSetRenderTargets(1, &old_rtv, old_dsv);
+        context_->RSSetState(old_rs);
+        context_->OMSetDepthStencilState(old_dss, old_stencil_ref);
+        context_->OMSetBlendState(old_bs, old_blend_factor, old_sample_mask);
+        if (old_vp_count > 0) context_->RSSetViewports(1, &old_vp);
 
-    // ── Restore everything ────────────────────────────────────────────────────
-    context_->PSSetShaderResources(0, 2, old_srvs);
-    context_->PSSetSamplers(0, 2, old_samplers);
-    context_->PSSetConstantBuffers(0, 1, &old_cb);
-    context_->VSSetShader(old_vs, nullptr, 0);
-    context_->PSSetShader(old_ps, nullptr, 0);
-    context_->IASetInputLayout(old_il);
-    context_->IASetPrimitiveTopology(old_topo);
-    context_->OMSetRenderTargets(1, &old_rtv, old_dsv);
-    context_->RSSetState(old_rs);
-    context_->OMSetDepthStencilState(old_dss, old_stencil_ref);
-    context_->OMSetBlendState(old_bs, old_blend_factor, old_sample_mask);
-    if (old_vp_count > 0) context_->RSSetViewports(1, &old_vp);
-
-    if (old_rtv)        old_rtv->Release();
-    if (old_dsv)        old_dsv->Release();
-    if (old_rs)         old_rs->Release();
-    if (old_dss)        old_dss->Release();
-    if (old_bs)         old_bs->Release();
-    if (old_il)         old_il->Release();
-    if (old_vs)         old_vs->Release();
-    if (old_ps)         old_ps->Release();
-    if (old_srvs[0])    old_srvs[0]->Release();
-    if (old_srvs[1])    old_srvs[1]->Release();
-    if (old_samplers[0]) old_samplers[0]->Release();
-    if (old_samplers[1]) old_samplers[1]->Release();
-    if (old_cb)         old_cb->Release();
+        if (old_rtv)        old_rtv->Release();
+        if (old_dsv)        old_dsv->Release();
+        if (old_rs)         old_rs->Release();
+        if (old_dss)        old_dss->Release();
+        if (old_bs)         old_bs->Release();
+        if (old_il)         old_il->Release();
+        if (old_vs)         old_vs->Release();
+        if (old_gs)         old_gs->Release();
+        if (old_hs)         old_hs->Release();
+        if (old_ds)         old_ds->Release();
+        if (old_ps)         old_ps->Release();
+        if (old_srvs[0])    old_srvs[0]->Release();
+        if (old_srvs[1])    old_srvs[1]->Release();
+        if (old_samplers[0]) old_samplers[0]->Release();
+        if (old_samplers[1]) old_samplers[1]->Release();
+        if (old_cb)         old_cb->Release();
+    }
 
     return true;
 }

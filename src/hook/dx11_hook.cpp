@@ -538,8 +538,16 @@ HRESULT __stdcall D3D11Hook::present_detour(
                 ctx.api = GraphicsAPI::D3D11;
                 ctx.device = d3d11_dev;
 
+                // Use GetCurrentBackBufferIndex for flip-model swap chains
+                u32 bb_idx = 0;
+                IDXGISwapChain3* sc3 = nullptr;
+                if (SUCCEEDED(swap_chain->QueryInterface(IID_PPV_ARGS(&sc3)))) {
+                    bb_idx = sc3->GetCurrentBackBufferIndex();
+                    sc3->Release();
+                }
+
                 ID3D11Texture2D* back_buffer = nullptr;
-                if (SUCCEEDED(swap_chain->GetBuffer(0, IID_PPV_ARGS(&back_buffer)))) {
+                if (SUCCEEDED(swap_chain->GetBuffer(bb_idx, IID_PPV_ARGS(&back_buffer)))) {
                     D3D11_TEXTURE2D_DESC desc;
                     back_buffer->GetDesc(&desc);
                     ctx.width = desc.Width;

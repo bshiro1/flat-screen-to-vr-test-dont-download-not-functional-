@@ -21,9 +21,9 @@ public:
     void render();
 
     // Enable/disable
-    void set_visible(bool v) { visible_ = v; }
+    void set_visible(bool v);
     bool is_visible() const { return visible_; }
-    void toggle_visible() { visible_ = !visible_; }
+    void toggle_visible();
 
     // Overlay key toggle
     void set_toggle_key(u16 vk) { toggle_key_ = vk; }
@@ -47,8 +47,10 @@ private:
                                            WPARAM w_param, LPARAM l_param);
 
     bool initialized_ = false;
-    bool visible_ = true;
+    bool visible_ = false;
     u16 toggle_key_ = VK_F2;
+
+    bool cursor_managed_ = false;
 
     GraphicsAPI api_ = GraphicsAPI::Unknown;
 
