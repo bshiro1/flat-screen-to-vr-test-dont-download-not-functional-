@@ -1,0 +1,14 @@
+{
+	"InstallScripts" : 
+	[
+		"C:/Users/shiro/vr-game-converter/build/cmake_install.cmake",
+		"C:/Users/shiro/vr-game-converter/build/_deps/minhook-build/cmake_install.cmake",
+		"C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/cmake_install.cmake",
+		"C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/include/cmake_install.cmake",
+		"C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/include/openxr/cmake_install.cmake",
+		"C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/src/cmake_install.cmake",
+		"C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-build/src/loader/cmake_install.cmake",
+		"C:/Users/shiro/vr-game-converter/build/_deps/nlohmann_json-build/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

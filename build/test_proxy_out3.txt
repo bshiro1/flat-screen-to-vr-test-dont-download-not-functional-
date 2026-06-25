@@ -1,0 +1,105 @@
+DLL loaded successfully via LoadLibrary
+Calling StartVRConverter...
+[00:06:17.232] INFO: Starting VR Converter Phase 2 from remote thread
+[00:06:17.236] INFO: Logger initialized
+[00:06:17.239] INFO: === VR Game Converter v0.2.0 (Phase 2) ===
+[00:06:17.242] INFO: Config loaded from C:\Users\shiro\AppData\Roaming\VRGameConverter\config.json
+[00:06:17.245] INFO: Performance monitor initialized
+[00:06:17.247] INFO: Latency compensator initialized
+[00:06:17.249] INFO: Input proxy initialized
+[00:06:17.253] WARN: Input profile 'default_vr' not found, using defaults
+[00:06:17.255] INFO: HookManager initializing
+[00:06:17.257] INFO: Detected D3D12
+[00:06:17.283] INFO: D3D11CreateDevice hook installed
+[00:06:17.309] INFO: D3D11CreateDeviceAndSwapChain hook installed
+[00:06:17.405] INFO: Starting VR Converter Phase 2 from remote thread
+[00:06:17.407] INFO: Logger initialized
+[00:06:17.407] INFO: === VR Game Converter v0.2.0 (Phase 2) ===
+[00:06:17.408] INFO: Config loaded from C:\Users\shiro\AppData\Roaming\VRGameConverter\config.json
+[00:06:17.409] INFO: Performance monitor initialized
+[00:06:17.409] INFO: Latency compensator initialized
+[00:06:17.409] INFO: Input proxy initialized
+[00:06:17.411] WARN: Input profile 'default_vr' not found, using defaults
+[00:06:17.411] INFO: HookManager initializing
+[00:06:17.411] INFO: Detected D3D12
+[00:06:17.437] INFO: Starting VR Converter Phase 2 from remote thread
+[00:06:17.438] INFO: === VR Game Converter v0.2.0 (Phase 2) ===
+[00:06:17.439] INFO: Config loaded from C:\Users\shiro\AppData\Roaming\VRGameConverter\config.json
+[00:06:17.439] INFO: Performance monitor initialized
+[00:06:17.439] INFO: Latency compensator initialized
+[00:06:17.439] INFO: Input proxy initialized
+[00:06:17.441] WARN: Input profile 'default_vr' not found, using defaults
+[00:06:17.441] INFO: HookManager initializing
+[00:06:17.441] INFO: Detected D3D12
+[00:06:17.441] WARN: MH_CreateHook failed for D3D11CreateDevice
+[00:06:17.441] WARN: MH_CreateHook failed for D3D11CreateDeviceAndSwapChain
+[00:06:17.450] INFO: D3D11CreateDevice hook installed
+[00:06:17.451] INFO: D3D11CreateDevice hook captured game device
+[00:06:17.487] INFO: D3D11CreateDeviceAndSwapChain hook installed
+[00:06:17.500] INFO: D3D11CreateDevice hook captured game device
+[00:06:17.500] INFO: D3D11CreateDevice hook captured game device
+[00:06:17.508] INFO: Present vtable[8] FLIP_DISCARD = 0x7ffdaf08d7e0
+[00:06:17.508] INFO: MH_CreateHook: pf=0x7ffdaf08d7e0, detour_addr=0x7ffc9f41bb04
+[00:06:17.508] INFO: new_orig (trampoline) = 0x7ffdaf070fc0
+[00:06:17.508] INFO: trampoline[0:20] = 48 89 5c 24 10 ff 25 00 00 00 00 e5 d7 08 af fd 7f 00 00 ff
+[00:06:17.508] INFO: trampoline[20:32] = 25 00 00 00 00 04 bb 41 9f fc 7f 00
+[00:06:17.518] INFO: D3D11CreateDevice hook captured game device
+[00:06:17.544] INFO: D3D11 Present hook installed for FLIP_DISCARD
+[00:06:17.544] INFO: Present JMP target = 0x7ffdaf070fd3, present_detour = 0x7ffc9f41bb04
+[00:06:17.553] INFO: D3D11CreateDevice hook captured game device
+[00:06:17.553] INFO: D3D11CreateDevice hook captured game device
+[00:06:17.558] INFO: Present vtable[8] FLIP_DISCARD = 0x7ffdaf08d7e0
+[00:06:17.569] INFO: D3D11CreateDevice hook captured game device
+[00:06:17.570] INFO: D3D11CreateDevice hook captured game device
+[00:06:17.578] INFO: D3D11CreateDevice hook captured game device
+[00:06:17.598] INFO: D3D11CreateDevice hook captured game device
+[00:06:17.599] INFO: D3D11CreateDevice hook captured game device
+[00:06:17.602] INFO: Present vtable[8] FLIP_SEQUENTIAL = 0x7ffdaf08d7e0
+[00:06:17.620] INFO: D3D11CreateDevice hook captured game device
+[00:06:17.636] INFO: D3D11CreateDevice hook captured game device
+[00:06:17.639] INFO: Present vtable[8] FLIP_SEQUENTIAL = 0x7ffdaf08d7e0
+[00:06:17.643] INFO: D3D11CreateDevice hook captured game device
+[00:06:17.643] INFO: VRC: hook_swapchain_present called — vtable[8]=0x7ffdaf08d7e0
+[00:06:17.644] INFO: D3D11CreateDeviceAndSwapChain hook captured game device + swap chain
+[00:06:17.644] INFO: VRC: hook_swapchain_present called — vtable[8]=0x7ffdaf08d7e0
+[00:06:17.645] INFO: Present vtable[8] FLIP_DISCARD = 0x7ffdaf08d7e0
+[00:06:17.666] INFO: VRC: hook_swapchain_present called — vtable[8]=0x7ffdaf08d7e0
+[00:06:17.666] INFO: D3D11CreateDeviceAndSwapChain hook captured game device + swap chain
+[00:06:17.667] INFO: VRC: hook_swapchain_present called — vtable[8]=0x7ffdaf08d7e0
+[00:06:17.667] INFO: D3D11CreateDeviceAndSwapChain hook captured game device + swap chain
+[00:06:17.667] INFO: Present vtable[8] SEQUENTIAL = 0x7ffdaf08d7e0
+[00:06:17.683] INFO: D3D11 Present hook installed on real game swap chain
+[00:06:17.683] INFO: D3D11CreateDeviceAndSwapChain hook captured game device + swap chain
+[00:06:17.690] INFO: D3D11CreateDevice hook captured game device
+[00:06:17.690] INFO: D3D11CreateDevice hook captured game device
+[00:06:17.692] INFO: Present vtable[8] FLIP_SEQUENTIAL = 0x7ffdaf08d7e0
+[00:06:17.713] INFO: VRC: hook_swapchain_present called — vtable[8]=0x7ffdaf08d7e0
+[00:06:17.713] INFO: D3D11CreateDeviceAndSwapChain hook captured game device + swap chain
+[00:06:17.729] INFO: Present vtable[8] SEQUENTIAL = 0x7ffdaf08d7e0
+[00:06:17.736] INFO: VRC: hook_swapchain_present called — vtable[8]=0x7ffdaf08d7e0
+[00:06:17.737] INFO: D3D11CreateDeviceAndSwapChain hook captured game device + swap chain
+[00:06:17.752] INFO: VRC_VEH: code=0xC0000005 addr=0x7ffca2210a94 flags=0x0
+[00:06:17.752] INFO: VRC_VEH: AV read=0 addr=0xffffffffffffffff
+[00:06:17.752] INFO: VRC_VEH: code=0xC0000005 addr=0x7ffca2210a94 flags=0x0
+[00:06:17.753] INFO: VRC_VEH: AV read=0 addr=0xffffffffffffffff
+[00:06:17.753] INFO: VRC_VEH: code=0xC0000005 addr=0x7ffca2210a94 flags=0x0
+[00:06:17.753] INFO: VRC_VEH: AV read=0 addr=0xffffffffffffffff
+[00:06:17.760] INFO: VRC: hook_swapchain_present called — vtable[8]=0x7ffdaf08d7e0
+[00:06:17.760] INFO: D3D11CreateDeviceAndSwapChain hook captured game device + swap chain
+[00:06:17.760] INFO: VRC_VEH: code=0xC0000005 addr=0x7ffca2210a94 flags=0x0
+[00:06:17.761] INFO: VRC_VEH: AV read=0 addr=0xffffffffffffffff
+[00:06:17.761] INFO: VRC_VEH: code=0xC0000005 addr=0x7ffca2210a94 flags=0x0
+[00:06:17.761] INFO: VRC_VEH: AV read=0 addr=0xffffffffffffffff
+[00:06:17.761] INFO: VRC_VEH: code=0xC0000005 addr=0x7ffca2210a94 flags=0x0
+[00:06:17.761] INFO: VRC_VEH: AV read=0 addr=0xffffffffffffffff
+[00:06:17.766] INFO: VRC: hook_swapchain_present called — vtable[8]=0x7ffdaf08d7e0
+[00:06:17.766] INFO: D3D11CreateDeviceAndSwapChain hook captured game device + swap chain
+[00:06:17.766] INFO: Present vtable[8] SEQUENTIAL = 0x7ffdaf08d7e0
+[00:06:17.792] INFO: VRC: hook_swapchain_present called — vtable[8]=0x7ffdaf08d7e0
+[00:06:17.792] INFO: D3D11CreateDeviceAndSwapChain hook captured game device + swap chain
+[00:06:17.793] INFO: VRC: hook_swapchain_present called — vtable[8]=0x7ffdaf08d7e0
+[00:06:17.793] INFO: D3D11CreateDeviceAndSwapChain hook captured game device + swap chain
+[00:06:17.793] INFO: Present vtable[8] DISCARD = 0x7ffdaf08d7e0
+[00:06:17.815] INFO: D3D11CreateDevice hook captured game device
+[00:06:17.815] INFO: D3D11CreateDevice hook captured game device
+[00:06:17.818] INFO: Present1 vtable[22] = 0x7ffdaf08dc80 (Present = 0x7ffdaf08d7e0)

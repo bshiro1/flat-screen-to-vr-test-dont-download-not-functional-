@@ -1,0 +1,172 @@
+DLL loaded successfully via LoadLibrary
+Calling StartVRConverter...
+[00:28:49.487] INFO: Starting VR Converter Phase 2
+[00:28:49.491] INFO: Logger initialized
+[00:28:49.493] INFO: === VR Game Converter v0.2.0 (Phase 2) ===
+[00:28:49.496] INFO: Config loaded from C:\Users\shiro\AppData\Roaming\VRGameConverter\config.json
+[00:28:49.499] INFO: Performance monitor initialized
+[00:28:49.501] INFO: Latency compensator initialized
+[00:28:49.503] INFO: Input proxy initialized
+[00:28:49.507] WARN: Input profile 'default_vr' not found, using defaults
+[00:28:49.509] INFO: HookManager initializing
+[00:28:49.509] INFO: Detected D3D12
+[00:28:49.538] INFO: D3D11CreateDevice hook installed
+[00:28:49.566] INFO: D3D11CreateDeviceAndSwapChain hook installed
+[00:28:49.699] INFO: Starting VR Converter Phase 2
+[00:28:49.700] INFO: Logger initialized
+[00:28:49.701] INFO: === VR Game Converter v0.2.0 (Phase 2) ===
+[00:28:49.702] INFO: Config loaded from C:\Users\shiro\AppData\Roaming\VRGameConverter\config.json
+[00:28:49.702] INFO: Performance monitor initialized
+[00:28:49.703] INFO: Latency compensator initialized
+[00:28:49.703] INFO: Input proxy initialized
+[00:28:49.704] WARN: Input profile 'default_vr' not found, using defaults
+[00:28:49.705] INFO: HookManager initializing
+[00:28:49.705] INFO: Detected D3D12
+[00:28:49.712] INFO: D3D11CreateDevice hook captured game device
+[00:28:49.745] INFO: D3D11CreateDevice hook installed
+[00:28:49.748] INFO: D3D11CreateDevice hook captured game device
+[00:28:49.754] INFO: Present vtable[8] FLIP_DISCARD = 0x7ffdaf08d7e0
+[00:28:49.755] INFO: MH_CreateHook: pf=0x7ffdaf08d7e0, detour_addr=0x7ffcace9bb31
+[00:28:49.755] INFO: new_orig (trampoline) = 0x7ffdaf070fc0
+[00:28:49.755] INFO: trampoline[0:20] = 48 89 5c 24 10 ff 25 00 00 00 00 e5 d7 08 af fd 7f 00 00 ff
+[00:28:49.755] INFO: trampoline[20:32] = 25 00 00 00 00 31 bb e9 ac fc 7f 00
+[00:28:49.793] INFO: D3D11CreateDeviceAndSwapChain hook installed
+[00:28:49.801] INFO: D3D11 Present hook installed for FLIP_DISCARD
+[00:28:49.801] INFO: Present JMP target = 0x7ffdaf070fd3, present_detour = 0x7ffcace9bb31
+[00:28:49.818] INFO: D3D11CreateDevice hook captured game device
+[00:28:49.819] INFO: D3D11CreateDevice hook captured game device
+[00:28:49.863] INFO: D3D11CreateDevice hook captured game device
+[00:28:49.864] INFO: D3D11CreateDevice hook captured game device
+[00:28:49.864] INFO: D3D11CreateDevice hook captured game device
+[00:28:49.867] INFO: Present vtable[8] FLIP_SEQUENTIAL = 0x7ffdaf08d7e0
+[00:28:49.882] INFO: D3D11CreateDevice hook captured game device
+[00:28:49.885] INFO: Present vtable[8] FLIP_DISCARD = 0x7ffdaf08d7e0
+[00:28:49.885] INFO: MH_CreateHook: pf=0x7ffdaf08d7e0, detour_addr=0x7ffcad54bb04
+[00:28:49.885] INFO: new_orig (trampoline) = 0x7ffdaf060fc0
+[00:28:49.885] INFO: trampoline[0:20] = ff 25 00 00 00 00 d3 0f 07 af fd 7f 00 00 ff 25 00 00 00 00
+[00:28:49.885] INFO: trampoline[20:32] = 04 bb 54 ad fc 7f 00 00 cc cc cc cc
+[00:28:49.890] INFO: VRC: hook_swapchain_present called — vtable[8]=0x7ffdaf08d7e0
+[00:28:49.890] INFO: D3D11CreateDeviceAndSwapChain hook captured game device + swap chain
+[00:28:49.890] INFO: VRC: hook_swapchain_present called — vtable[8]=0x7ffdaf08d7e0
+[00:28:49.891] INFO: D3D11CreateDeviceAndSwapChain hook captured game device + swap chain
+[00:28:49.891] INFO: Present vtable[8] SEQUENTIAL = 0x7ffdaf08d7e0
+[00:28:49.917] INFO: VRC: hook_swapchain_present called — vtable[8]=0x7ffdaf08d7e0
+[00:28:49.918] INFO: D3D11CreateDeviceAndSwapChain hook captured game device + swap chain
+[00:28:49.926] INFO: VRC: hook_swapchain_present called — vtable[8]=0x7ffdaf08d7e0
+[00:28:49.926] INFO: D3D11CreateDeviceAndSwapChain hook captured game device + swap chain
+[00:28:49.926] INFO: Present vtable[8] DISCARD = 0x7ffdaf08d7e0
+[00:28:49.927] INFO: D3D11 Present hook installed for FLIP_DISCARD
+[00:28:49.928] INFO: Present JMP target = 0x7ffdaf060fce, present_detour = 0x7ffcad54bb04
+[00:28:49.948] INFO: D3D11CreateDevice hook captured game device
+[00:28:49.948] INFO: D3D11CreateDevice hook captured game device
+[00:28:49.951] INFO: Present1 vtable[22] = 0x7ffdaf08dc80 (Present = 0x7ffdaf08d7e0)
+[00:28:49.972] INFO: D3D11CreateDevice hook captured game device
+[00:28:49.972] INFO: D3D11CreateDevice hook captured game device
+[00:28:49.977] INFO: Present vtable[8] FLIP_SEQUENTIAL = 0x7ffdaf08d7e0
+[00:28:49.991] INFO: D3D11 Present1 (vtable[22]) hook installed
+[00:28:50.004] INFO: VRC: hook_swapchain_present called — vtable[8]=0x7ffdaf08d7e0
+[00:28:50.004] INFO: D3D11CreateDeviceAndSwapChain hook captured game device + swap chain
+[00:28:50.015] INFO: D3D11 Present hook installed globally via temp swap chain (2 effects)
+[00:28:50.015] INFO: Present first bytes AFTER install: e9 e9
+[00:28:50.015] INFO: VRC: captured swap chain vtable[8] = 0x7ffdaf08d7e0 (hooked addr = 0x7ffdaf08d7e0)
+[00:28:50.016] INFO: D3D11 hooks installed
+[00:28:50.016] INFO: Present hook installed for 1
+[00:28:50.016] INFO: Present hook installed for D3D11
+[00:28:50.022] INFO: VRC: hook_swapchain_present called — vtable[8]=0x7ffdaf08d7e0
+[00:28:50.023] INFO: D3D11CreateDeviceAndSwapChain hook captured game device + swap chain
+[00:28:50.023] INFO: Present vtable[8] SEQUENTIAL = 0x7ffdaf08d7e0
+[00:28:50.051] INFO: VRC: hook_swapchain_present called — vtable[8]=0x7ffdaf08d7e0
+[00:28:50.051] INFO: D3D11CreateDeviceAndSwapChain hook captured game device + swap chain
+[00:28:50.056] INFO: D3D12CreateDevice hook installed
+[00:28:50.059] INFO: VRC: hook_swapchain_present called — vtable[8]=0x7ffdaf08d7e0
+[00:28:50.060] INFO: D3D11CreateDeviceAndSwapChain hook captured game device + swap chain
+[00:28:50.060] INFO: Present vtable[8] DISCARD = 0x7ffdaf08d7e0
+[00:28:50.092] INFO: D3D11CreateDevice hook captured game device
+[00:28:50.092] INFO: D3D11CreateDevice hook captured game device
+[00:28:50.095] INFO: Present1 vtable[22] = 0x7ffdaf08dc80 (Present = 0x7ffdaf08d7e0)
+[00:28:50.135] INFO: D3D11 Present1 (vtable[22]) hook installed
+[00:28:50.136] INFO: D3D11 Present hook installed globally via temp swap chain (2 effects)
+[00:28:50.136] INFO: Present first bytes AFTER install: e9 e9
+[00:28:50.136] INFO: VRC: captured swap chain vtable[8] = 0x7ffdaf08d7e0 (hooked addr = 0x7ffdaf08d7e0)
+[00:28:50.137] INFO: D3D11 hooks installed
+[00:28:50.137] INFO: Present hook installed for 1
+[00:28:50.137] INFO: Present hook installed for D3D11
+[00:28:50.198] INFO: D3D12CreateDevice hook installed
+[00:28:50.199] INFO: D3D12CreateDevice hook captured game device
+[00:28:50.216] INFO: D3D12 ExecuteCommandLists hook installed
+[00:28:50.216] INFO: D3D12 ECL hook pre-installed via temp device (late-injection path)
+[00:28:50.216] INFO: D3D12 hook installed (CreateDevice + ECL)
+[00:28:50.217] INFO: Present hook installed for 2
+[00:28:50.217] INFO: Present hook installed for D3D12
+[00:28:50.217] INFO: VR Game Converter Phase 2 initialized
+StartVRConverter returned
+[00:28:50.240] ERROR: MinHook CreateHook failed for ExecuteCommandLists
+[00:28:50.246] ERROR: Failed to install ECL hook on game device
+[00:28:50.257] INFO: VRC: hook_swapchain_present called — vtable[8]=0x7ffdaf08d7e0
+[00:28:50.258] INFO: D3D11CreateDeviceAndSwapChain hook captured game device + swap chain
+[00:28:50.278] INFO: VRC: hook_swapchain_present called — vtable[8]=0x7ffdaf08d7e0
+[00:28:50.278] INFO: D3D11CreateDeviceAndSwapChain hook captured game device + swap chain
+Test app running. PID: 18952
+[00:28:50.290] INFO: VRC: present_detour entered (first call) — vtable[8]=0x7ffdaf08d7e0, our_func=0x7ffdaf08d7e0
+[00:28:50.290] INFO: VRC: present_detour entered (first call) — vtable[8]=0x7ffdaf08d7e0, our_func=0x7ffdaf08d7e0
+[00:28:50.291] INFO: Initializing VR pipeline on first Present
+[00:28:50.291] INFO: Initializing StereoRenderer v2 (Phase 2)
+[00:28:50.291] INFO: Performance monitor initialized
+[00:28:50.291] INFO: Latency compensator initialized
+[00:28:50.292] INFO: Init D3D11 stereo rendering (Phase 2)
+[00:28:50.292] INFO: Initializing OpenXR context (API: 1)
+[00:28:50.304] DEBUG: Available OpenXR extension: XR_KHR_D3D11_enable
+[00:28:50.304] DEBUG: Available OpenXR extension: XR_KHR_D3D12_enable
+[00:28:50.304] DEBUG: Available OpenXR extension: XR_KHR_vulkan_enable
+[00:28:50.305] DEBUG: Available OpenXR extension: XR_KHR_vulkan_enable2
+[00:28:50.305] DEBUG: Available OpenXR extension: XR_KHR_opengl_enable
+[00:28:50.305] DEBUG: Available OpenXR extension: XR_KHR_composition_layer_depth
+[00:28:50.305] DEBUG: Available OpenXR extension: XR_KHR_win32_convert_performance_counter_time
+[00:28:50.306] DEBUG: Available OpenXR extension: XR_KHR_visibility_mask
+[00:28:50.306] DEBUG: Available OpenXR extension: XR_FB_display_refresh_rate
+[00:28:50.306] DEBUG: Available OpenXR extension: XR_EXT_hand_tracking
+[00:28:50.306] DEBUG: Available OpenXR extension: XR_EXT_hand_joints_motion_range
+[00:28:50.307] DEBUG: Available OpenXR extension: XR_EXT_eye_gaze_interaction
+[00:28:50.307] DEBUG: Available OpenXR extension: XR_VARJO_foveated_rendering
+[00:28:50.307] DEBUG: Available OpenXR extension: XR_PIMAX_custom_interface
+[00:28:50.307] DEBUG: Available OpenXR extension: XR_EXT_debug_utils
+[00:28:50.308] INFO: OpenXR runtime: Pimax OpenXR v0.1.0
+[00:28:50.308] ERROR: xrGetSystem failed: no HMD detected? (-35)
+[00:28:50.309] ERROR: OpenXR initialization failed
+[00:28:50.309] ERROR: Failed to initialize stereo renderer
+[00:28:50.312] INFO: D3D11 multithread protection: enabled
+[00:28:50.312] INFO: D3D11 device bound to OpenXR context
+[00:28:50.312] INFO: Bound D3D11 device to OpenXR
+[00:28:50.324] INFO: D3D12 ExecuteCommandLists hook installed
+[00:28:50.324] INFO: D3D12 ECL hook pre-installed via temp device (late-injection path)
+[00:28:50.325] INFO: D3D12 hook installed (CreateDevice + ECL)
+[00:28:50.325] INFO: Present hook installed for 2
+[00:28:50.325] INFO: Present hook installed for D3D12
+[00:28:50.325] INFO: VR Game Converter Phase 2 initialized
+[00:28:50.329] INFO: Initializing VR pipeline on first Present
+[00:28:50.330] INFO: Initializing StereoRenderer v2 (Phase 2)
+[00:28:50.330] INFO: Performance monitor initialized
+[00:28:50.330] INFO: Latency compensator initialized
+[00:28:50.330] INFO: Init D3D11 stereo rendering (Phase 2)
+[00:28:50.330] INFO: Initializing OpenXR context (API: 1)
+[00:28:50.336] DEBUG: Available OpenXR extension: XR_KHR_D3D11_enable
+[00:28:50.336] DEBUG: Available OpenXR extension: XR_KHR_D3D12_enable
+[00:28:50.337] DEBUG: Available OpenXR extension: XR_KHR_vulkan_enable
+[00:28:50.337] DEBUG: Available OpenXR extension: XR_KHR_vulkan_enable2
+[00:28:50.337] DEBUG: Available OpenXR extension: XR_KHR_opengl_enable
+[00:28:50.337] DEBUG: Available OpenXR extension: XR_KHR_composition_layer_depth
+[00:28:50.337] DEBUG: Available OpenXR extension: XR_KHR_win32_convert_performance_counter_time
+[00:28:50.338] DEBUG: Available OpenXR extension: XR_KHR_visibility_mask
+[00:28:50.338] DEBUG: Available OpenXR extension: XR_FB_display_refresh_rate
+[00:28:50.338] DEBUG: Available OpenXR extension: XR_EXT_hand_tracking
+[00:28:50.338] DEBUG: Available OpenXR extension: XR_EXT_hand_joints_motion_range
+[00:28:50.338] DEBUG: Available OpenXR extension: XR_EXT_eye_gaze_interaction
+[00:28:50.338] DEBUG: Available OpenXR extension: XR_VARJO_foveated_rendering
+[00:28:50.338] DEBUG: Available OpenXR extension: XR_PIMAX_custom_interface
+[00:28:50.338] DEBUG: Available OpenXR extension: XR_EXT_debug_utils
+[00:28:50.380] ERROR: xrCreateInstance failed: -10
+[00:28:50.380] ERROR: OpenXR initialization failed
+[00:28:50.380] ERROR: Failed to initialize stereo renderer
+[00:28:50.384] INFO: D3D11 multithread protection: enabled
+[00:28:50.384] INFO: D3D11 device bound to OpenXR context
+[00:28:50.385] INFO: Bound D3D11 device to OpenXR

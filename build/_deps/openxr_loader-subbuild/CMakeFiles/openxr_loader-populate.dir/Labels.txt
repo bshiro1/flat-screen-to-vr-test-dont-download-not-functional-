@@ -1,0 +1,14 @@
+# Target labels
+ openxr_loader-populate
+# Source files and their labels
+C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/CMakeFiles/openxr_loader-populate
+C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/CMakeFiles/openxr_loader-populate.rule
+C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/CMakeFiles/openxr_loader-populate-complete.rule
+C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-build.rule
+C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-configure.rule
+C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-download.rule
+C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-install.rule
+C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-mkdir.rule
+C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-patch.rule
+C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-test.rule
+C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-update.rule

@@ -1,0 +1,14 @@
+# Target labels
+ minhook-populate
+# Source files and their labels
+C:/Users/shiro/vr-game-converter/build/_deps/minhook-subbuild/CMakeFiles/minhook-populate
+C:/Users/shiro/vr-game-converter/build/_deps/minhook-subbuild/CMakeFiles/minhook-populate.rule
+C:/Users/shiro/vr-game-converter/build/_deps/minhook-subbuild/CMakeFiles/minhook-populate-complete.rule
+C:/Users/shiro/vr-game-converter/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-build.rule
+C:/Users/shiro/vr-game-converter/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-configure.rule
+C:/Users/shiro/vr-game-converter/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-download.rule
+C:/Users/shiro/vr-game-converter/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-install.rule
+C:/Users/shiro/vr-game-converter/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-mkdir.rule
+C:/Users/shiro/vr-game-converter/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-patch.rule
+C:/Users/shiro/vr-game-converter/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-test.rule
+C:/Users/shiro/vr-game-converter/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-update.rule

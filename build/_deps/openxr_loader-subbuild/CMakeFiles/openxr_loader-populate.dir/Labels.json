@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/CMakeFiles/openxr_loader-populate"
+		},
+		{
+			"file" : "C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/CMakeFiles/openxr_loader-populate.rule"
+		},
+		{
+			"file" : "C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/CMakeFiles/openxr_loader-populate-complete.rule"
+		},
+		{
+			"file" : "C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-build.rule"
+		},
+		{
+			"file" : "C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-configure.rule"
+		},
+		{
+			"file" : "C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-download.rule"
+		},
+		{
+			"file" : "C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-install.rule"
+		},
+		{
+			"file" : "C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-mkdir.rule"
+		},
+		{
+			"file" : "C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-patch.rule"
+		},
+		{
+			"file" : "C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-test.rule"
+		},
+		{
+			"file" : "C:/Users/shiro/vr-game-converter/build/_deps/openxr_loader-subbuild/openxr_loader-populate-prefix/src/openxr_loader-populate-stamp/openxr_loader-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"openxr_loader-populate"
+		],
+		"name" : "openxr_loader-populate"
+	}
+}

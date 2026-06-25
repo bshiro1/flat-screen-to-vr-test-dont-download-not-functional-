@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "C:/Users/shiro/vr-game-converter/build/_deps/minhook-subbuild/CMakeFiles/minhook-populate"
+		},
+		{
+			"file" : "C:/Users/shiro/vr-game-converter/build/_deps/minhook-subbuild/CMakeFiles/minhook-populate.rule"
+		},
+		{
+			"file" : "C:/Users/shiro/vr-game-converter/build/_deps/minhook-subbuild/CMakeFiles/minhook-populate-complete.rule"
+		},
+		{
+			"file" : "C:/Users/shiro/vr-game-converter/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-build.rule"
+		},
+		{
+			"file" : "C:/Users/shiro/vr-game-converter/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-configure.rule"
+		},
+		{
+			"file" : "C:/Users/shiro/vr-game-converter/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-download.rule"
+		},
+		{
+			"file" : "C:/Users/shiro/vr-game-converter/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-install.rule"
+		},
+		{
+			"file" : "C:/Users/shiro/vr-game-converter/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-mkdir.rule"
+		},
+		{
+			"file" : "C:/Users/shiro/vr-game-converter/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-patch.rule"
+		},
+		{
+			"file" : "C:/Users/shiro/vr-game-converter/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-test.rule"
+		},
+		{
+			"file" : "C:/Users/shiro/vr-game-converter/build/_deps/minhook-subbuild/minhook-populate-prefix/src/minhook-populate-stamp/minhook-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"minhook-populate"
+		],
+		"name" : "minhook-populate"
+	}
+}

@@ -1,0 +1,2 @@
+Error [GENERAL | xrCreateInstance | OpenXR-Loader] : LoaderInstance::CreateInstance chained CreateInstance call failed
+Error [GENERAL | xrCreateInstance | OpenXR-Loader] : xrCreateInstance failed

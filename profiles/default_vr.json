@@ -1,0 +1,21 @@
+{
+    "name": "default_vr",
+    "game": "*",
+    "look_sensitivity": 1.0,
+    "movement_smoothing": 0.3,
+    "head_aim": true,
+    "snap_turn": true,
+    "snap_turn_angle": 45.0,
+    "snap_turn_mouse_pixels": 300,
+    "vignette_on_move": true,
+    "bindings": [
+        { "action": 8,  "source": "vr.right.button_a",          "vk_code": 32,  "deadzone": 0.5 },
+        { "action": 9,  "source": "vr.right.button_b",          "vk_code": 67,  "deadzone": 0.5 },
+        { "action": 10, "source": "vr.left.thumbstick_click",   "vk_code": 160, "deadzone": 0.5 },
+        { "action": 11, "source": "vr.left.button_y",           "vk_code": 70,  "deadzone": 0.5 },
+        { "action": 14, "source": "vr.left.button_x",           "vk_code": 82,  "deadzone": 0.5 },
+        { "action": 15, "source": "vr.left.menu",               "vk_code": 27,  "deadzone": 0.5 },
+        { "action": 16, "source": "vr.right.thumbstick_click",  "vk_code": 77,  "deadzone": 0.5 },
+        { "action": 17, "source": "vr.left.trigger",            "vk_code": 73,  "deadzone": 0.3 }
+    ]
+}
