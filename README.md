@@ -3,6 +3,8 @@
 Runtime video game converter that transforms standard flat-screen PC/console games
 into fully immersive VR experiences without modifying original game files.
 
+Full progress we have rendering but its bugged right now the eyes are inverted and settings are non functional in game but its technicaly working
+
 ## Architecture
 
 ```
