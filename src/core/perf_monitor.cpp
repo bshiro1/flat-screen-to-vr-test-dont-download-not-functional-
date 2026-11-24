@@ -60,16 +60,18 @@ void PerfMonitor::end_frame() {
     sample.frame_index = frame_index_;
 
     history_.push_back(sample);
+    // Every new sample enters the running sums; the oldest leaves them when
+    // it falls out of the window. (Adding only below capacity while always
+    // subtracting on eviction made the sums drift negative once full.)
+    sum_frame_ms_ += sample.frame_total_ms;
+    sum_cpu_ms_ += sample.cpu_work_ms;
+    sum_gpu_ms_ += sample.gpu_work_ms;
     if (history_.size() > kMaxHistory) {
         auto& oldest = history_.front();
         sum_frame_ms_ -= oldest.frame_total_ms;
         sum_cpu_ms_ -= oldest.cpu_work_ms;
         sum_gpu_ms_ -= oldest.gpu_work_ms;
         history_.pop_front();
-    } else {
-        sum_frame_ms_ += sample.frame_total_ms;
-        sum_cpu_ms_ += sample.cpu_work_ms;
-        sum_gpu_ms_ += sample.gpu_work_ms;
     }
 
     min_frame_ms_ = std::min(min_frame_ms_, sample.frame_total_ms);

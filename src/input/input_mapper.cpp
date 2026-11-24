@@ -4,6 +4,7 @@
 #include "overlay/imgui_overlay.h"
 #include "core/logging.h"
 #include "core/config.h"
+#include <nlohmann/json.hpp>
 #include <fstream>
 #include <algorithm>
 #include <cmath>
@@ -11,29 +12,63 @@
 
 namespace vrc {
 
+namespace {
+// VR config profiles are stored in a sibling folder so the injected DLL can
+// read them, but they are not input-binding profiles. Only accept files that
+// actually look like input profiles.
+bool is_input_profile_file(const std::filesystem::path& path) {
+    std::ifstream in(path);
+    if (!in) return false;
+    try {
+        auto j = nlohmann::json::parse(in);
+        if (!j.is_object()) return false;
+        auto kind = j.value("kind", std::string{});
+        if (kind == "vr") return false;
+        return j.contains("bindings") || j.contains("game");
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+} // namespace
+
 InputMapper& InputMapper::instance() {
     static InputMapper mapper;
     return mapper;
 }
 
 bool InputMapper::load_profile(const std::string& name) {
-    auto path = Config::instance().profiles_dir() / (name + ".json");
-    if (!std::filesystem::exists(path)) {
-        // Fall back: look for the profile in a profiles/ folder next to vr_converter.dll
+    const auto vr_profiles_dir = Config::instance().profiles_dir();
+    const auto input_dir = vr_profiles_dir.parent_path() / "input_profiles";
+    auto path = input_dir / (name + ".json");
+    const auto legacy_path = vr_profiles_dir / (name + ".json");
+
+    // Migrate a valid legacy input profile into the dedicated directory.
+    if (!is_input_profile_file(path) && is_input_profile_file(legacy_path)) {
+        std::error_code ec;
+        std::filesystem::create_directories(input_dir, ec);
+        // The destination exists but is invalid (or a VR profile). Repair it
+        // from the valid legacy copy instead of leaving the bad file in place.
+        std::filesystem::copy_file(legacy_path, path,
+            std::filesystem::copy_options::overwrite_existing, ec);
+    }
+
+    // Deploy shipped profiles from the DLL folder as a final fallback.
+    if (!is_input_profile_file(path)) {
         char dll_path[MAX_PATH] = {};
         HMODULE hm = GetModuleHandleA("vr_converter.dll");
         if (hm && GetModuleFileNameA(hm, dll_path, MAX_PATH)) {
             auto dll_dir = std::filesystem::path(dll_path).parent_path();
             auto candidate = dll_dir / "profiles" / (name + ".json");
-            if (std::filesystem::exists(candidate)) {
-                std::filesystem::create_directories(path.parent_path());
+            if (is_input_profile_file(candidate)) {
+                std::error_code ec;
+                std::filesystem::create_directories(input_dir, ec);
                 std::filesystem::copy_file(candidate, path,
-                    std::filesystem::copy_options::skip_existing);
+                    std::filesystem::copy_options::overwrite_existing, ec);
                 Log::info("Deployed input profile '{}' from DLL directory", name);
             }
         }
     }
-    if (!std::filesystem::exists(path)) {
+    if (!is_input_profile_file(path)) {
         Log::warn("Input profile '{}' not found, using defaults", name);
         return false;
     }
@@ -48,7 +83,8 @@ bool InputMapper::load_profile(const std::string& name) {
         prof.game = j.value("game", "*");
         prof.look_sensitivity = j.value("look_sensitivity", 1.0f);
         prof.movement_smoothing = j.value("movement_smoothing", 0.5f);
-        prof.head_aim = j.value("head_aim", false);
+        prof.invert_x = j.value("invert_x", false);
+        prof.invert_y = j.value("invert_y", false);
         prof.snap_turn = j.value("snap_turn", true);
         prof.snap_turn_angle = j.value("snap_turn_angle", 45.0f);
         prof.vignette_on_move = j.value("vignette_on_move", true);
@@ -73,6 +109,10 @@ bool InputMapper::load_profile(const std::string& name) {
 
         current_profile_ = prof;
         profiles_[name] = prof;
+        head_rot_initialized_ = false;
+        look_remainder_x_ = look_remainder_y_ = 0.0;
+        prev_snap_rx_ = 0.0f;
+        snap_cooldown_ = 0.0;
         Log::info("Loaded input profile: {} ({} bindings)", name, prof.bindings.size());
         return true;
     } catch (const std::exception& e) {
@@ -82,8 +122,11 @@ bool InputMapper::load_profile(const std::string& name) {
 }
 
 bool InputMapper::save_profile(const std::string& name) const {
-    auto path = Config::instance().profiles_dir() / (name + ".json");
+    const auto input_dir =
+        Config::instance().profiles_dir().parent_path() / "input_profiles";
+    auto path = input_dir / (name + ".json");
     try {
+        std::filesystem::create_directories(path.parent_path());
         auto it = profiles_.find(name);
         if (it == profiles_.end()) {
             Log::warn("Profile {} not found", name);
@@ -92,20 +135,25 @@ bool InputMapper::save_profile(const std::string& name) const {
 
         const auto& prof = it->second;
         nlohmann::json j;
+        j["kind"] = "input";
         j["name"] = prof.name;
         j["game"] = prof.game;
         j["look_sensitivity"] = prof.look_sensitivity;
         j["movement_smoothing"] = prof.movement_smoothing;
         j["head_aim"] = prof.head_aim;
+        j["invert_x"] = prof.invert_x;
+        j["invert_y"] = prof.invert_y;
         j["snap_turn"] = prof.snap_turn;
         j["snap_turn_angle"] = prof.snap_turn_angle;
         j["vignette_on_move"] = prof.vignette_on_move;
+        j["snap_turn_mouse_pixels"] = prof.snap_turn_mouse_pixels;
 
         nlohmann::json bindings = nlohmann::json::array();
         for (auto& b : prof.bindings) {
             nlohmann::json bj;
             bj["action"] = static_cast<u32>(b.action);
             bj["source"] = b.source;
+            bj["vk_code"] = b.vk_code;
             bj["scale"] = b.scale;
             bj["deadzone"] = b.deadzone;
             bj["invert"] = b.invert;
@@ -128,6 +176,10 @@ bool InputMapper::save_profile(const std::string& name) const {
 void InputMapper::set_profile(const InputProfile& profile) {
     current_profile_ = profile;
     profiles_[profile.name] = profile;
+    head_rot_initialized_ = false;
+    look_remainder_x_ = look_remainder_y_ = 0.0;
+    prev_snap_rx_ = 0.0f;
+    snap_cooldown_ = 0.0;
 }
 
 InputEvent InputMapper::map_event(const InputEvent& event) const {
@@ -176,6 +228,8 @@ void InputMapper::process_vr_thumbstick(const Vec2& stick,
                                          InputAction horizontal,
                                          InputAction vertical)
 {
+    (void)horizontal;
+    (void)vertical;
     auto& proxy = InputProxy::instance();
     f32 deadzone = 0.15f;
 
@@ -193,10 +247,39 @@ void InputMapper::process_vr_thumbstick(const Vec2& stick,
 }
 
 std::vector<std::string> InputMapper::available_profiles() const {
+    // Enumerate the profiles directory so newly installed / user-created
+    // profiles (e.g. big_walk.json) show up in the in-game selector instead of
+    // only the ones that happened to be loaded at startup.
     std::vector<std::string> names;
-    for (auto& [name, _] : profiles_) {
-        names.push_back(name);
+    auto add_dir = [&](const std::filesystem::path& dir) {
+        std::error_code ec;
+        if (!std::filesystem::exists(dir, ec)) return;
+        for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+            if (ec) break;
+            if (entry.path().extension() != ".json") continue;
+            if (!is_input_profile_file(entry.path())) continue;
+            names.push_back(entry.path().stem().string());
+        }
+    };
+    const auto vr_profiles_dir = Config::instance().profiles_dir();
+    add_dir(vr_profiles_dir.parent_path() / "input_profiles");
+    add_dir(vr_profiles_dir);
+
+    char dll_path[MAX_PATH] = {};
+    HMODULE hm = GetModuleHandleA("vr_converter.dll");
+    if (hm && GetModuleFileNameA(hm, dll_path, MAX_PATH)) {
+        add_dir(std::filesystem::path(dll_path).parent_path() / "profiles");
     }
+
+    // Keep any in-memory profiles that aren't on disk (e.g. set_profile calls).
+    for (auto& [name, _] : profiles_) {
+        if (std::find(names.begin(), names.end(), name) == names.end()) {
+            names.push_back(name);
+        }
+    }
+
+    std::sort(names.begin(), names.end());
+    names.erase(std::unique(names.begin(), names.end()), names.end());
     return names;
 }
 
@@ -301,8 +384,24 @@ static u16 default_vk(InputAction action) {
 
 // ─── process_frame ────────────────────────────────────────────────────────────
 
+void InputMapper::release_all_held() {
+    // Snapshot the keys first: inject_digital mutates vk_press_state_ while
+    // erasing entries from it would invalidate a live iterator.
+    std::vector<u16> held;
+    held.reserve(vk_press_state_.size());
+    for (auto& [vk, pressed] : vk_press_state_) {
+        if (pressed) held.push_back(vk);
+    }
+    for (u16 vk : held) inject_digital(vk, false, vk_press_state_);
+}
+
 void InputMapper::process_frame(f64 dt_ms) {
-    if (!XrInput::instance().is_active()) return;
+    if (!XrInput::instance().is_active()) {
+        // Session lost / controller inactive: no further frames may arrive, so
+        // release anything still held before bailing out.
+        release_all_held();
+        return;
+    }
     if (dt_ms <= 0.0 || dt_ms > 200.0) return;
 
     const auto& vr    = XrInput::instance().state();
@@ -310,6 +409,12 @@ void InputMapper::process_frame(f64 dt_ms) {
 
     // ── 0. Overlay open → switch to cursor-navigation mode ───────────────
     if (ImGuiOverlay::instance().is_visible()) {
+        // Release every key/button we were holding for the game — otherwise
+        // e.g. W stays pressed and the player keeps walking while the menu
+        // is up (this loop's early return would never send the key-up).
+        for (auto& [vk, held] : vk_press_state_) {
+            if (held && vk != VK_LBUTTON) inject_digital(vk, false, vk_press_state_);
+        }
         // Right thumbstick moves the mouse cursor over the overlay
         f32 rx = vr.thumbstick_right.x;
         f32 ry = vr.thumbstick_right.y;
@@ -342,65 +447,100 @@ void InputMapper::process_frame(f64 dt_ms) {
 
     // ── 2. Movement injection (left thumbstick) ───────────────────────────
     {
-        constexpr f32 kDeadzone = 0.15f;
+        constexpr f32 kBaseDeadzone = 0.15f;
+        // "Movement Smoothing" widens the deadzone so small stick wobble does
+        // not produce twitchy WASD taps. This gives the overlay slider a real,
+        // visible effect (previously it was parsed but never used).
+        f32 deadzone = kBaseDeadzone
+                     + std::clamp(current_profile_.movement_smoothing, 0.0f, 1.0f) * 0.25f;
         f32 lx = vr.thumbstick_left.x;
         f32 ly = vr.thumbstick_left.y;
 
-        inject_digital(0x57, ly >  kDeadzone, vk_press_state_);  // W = forward
-        inject_digital(0x53, ly < -kDeadzone, vk_press_state_);  // S = back
-        inject_digital(0x44, lx >  kDeadzone, vk_press_state_);  // D = right
-        inject_digital(0x41, lx < -kDeadzone, vk_press_state_);  // A = left
+        inject_digital(0x57, ly >  deadzone, vk_press_state_);  // W = forward
+        inject_digital(0x53, ly < -deadzone, vk_press_state_);  // S = back
+        inject_digital(0x44, lx >  deadzone, vk_press_state_);  // D = right
+        inject_digital(0x41, lx < -deadzone, vk_press_state_);  // A = left
     }
 
     // ── 3. Look / snap-turn (right thumbstick or head rotation) ──────────
     if (current_profile_.head_aim) {
-        // Drive mouse look from head rotation delta each frame
-        auto  pose     = TrackingSystem::instance().get_head_pose();
-        Quat& cur      = pose.rotation;
-        Quat& prev     = last_head_rot_;
+        Quat cur = TrackingSystem::instance().get_head_pose().rotation.normalized();
 
-        // Quaternion delta = cur * prev^-1 (local rotation since last frame)
-        Quat prev_inv  = { -prev.x, -prev.y, -prev.z, prev.w };
-        float norm     = prev.x*prev.x + prev.y*prev.y + prev.z*prev.z + prev.w*prev.w;
-        if (norm > 0.0001f) {
-            float inv_n = 1.0f / norm;
-            prev_inv = { -prev.x*inv_n, -prev.y*inv_n, -prev.z*inv_n, prev.w*inv_n };
+        // The first sample only establishes a baseline — without this, a head
+        // pose starting on the opposite quaternion hemisphere injects a huge
+        // one-frame look snap the moment the game loads.
+        if (!head_rot_initialized_) {
+            last_head_rot_ = cur;
+            head_rot_initialized_ = true;
+        } else {
+            // Quaternions double-cover rotations: q and -q are the same pose.
+            // Runtimes flip the sign past 180 degrees of yaw, which used to make
+            // atan2(dq.y, dq.w) wrap and inject a ~1900-pixel horizontal jump.
+            // Putting both samples on one hemisphere keeps dq.w non-negative.
+            const f32 dot = cur.x*last_head_rot_.x + cur.y*last_head_rot_.y +
+                            cur.z*last_head_rot_.z + cur.w*last_head_rot_.w;
+            if (dot < 0.0f) {
+                cur = { -cur.x, -cur.y, -cur.z, -cur.w };
+            }
+
+            Quat dq = (cur * last_head_rot_.conjugated()).normalized();
+            Vec3 rv = quat_log(dq); // signed rotation vector, half-angle
+
+            // OpenXR axes: +Y yaw is head turning LEFT, +X pitch is looking UP.
+            // Windows mouse deltas are screen-space (+dx right, +dy down), so
+            // both axes need their sign flipped. Previously neither was flipped,
+            // which made looking inverted in both directions by default.
+            f32 yaw_rad   =  2.0f * rv.y;
+            f32 pitch_rad =  2.0f * rv.x;
+
+            // Sanity bound: reject tracker glitches / residual prediction jumps.
+            constexpr f32 kMaxStepRad = 0.35f; // ~20 degrees per frame
+            yaw_rad   = std::clamp(yaw_rad,   -kMaxStepRad, kMaxStepRad);
+            pitch_rad = std::clamp(pitch_rad, -kMaxStepRad, kMaxStepRad);
+
+            const f32 kPixelsPerRad = 300.0f * current_profile_.look_sensitivity;
+            f64 want_x = static_cast<f64>(-yaw_rad   * kPixelsPerRad);
+            f64 want_y = static_cast<f64>(-pitch_rad * kPixelsPerRad);
+            if (current_profile_.invert_x) want_x = -want_x;
+            if (current_profile_.invert_y) want_y = -want_y;
+
+            // Keep the fractional remainder so very slow head motion still
+            // produces smooth sub-pixel movement instead of being truncated.
+            want_x += look_remainder_x_;
+            want_y += look_remainder_y_;
+            i32 dx = static_cast<i32>(std::trunc(want_x));
+            i32 dy = static_cast<i32>(std::trunc(want_y));
+            look_remainder_x_ = want_x - static_cast<f64>(dx);
+            look_remainder_y_ = want_y - static_cast<f64>(dy);
+
+            if (dx != 0 || dy != 0) proxy.inject_mouse_move(dx, dy);
+            last_head_rot_ = cur;
         }
-
-        Quat dq;
-        dq.x = cur.w*prev_inv.x + cur.x*prev_inv.w + cur.y*prev_inv.z - cur.z*prev_inv.y;
-        dq.y = cur.w*prev_inv.y - cur.x*prev_inv.z + cur.y*prev_inv.w + cur.z*prev_inv.x;
-        dq.z = cur.w*prev_inv.z + cur.x*prev_inv.y - cur.y*prev_inv.x + cur.z*prev_inv.w;
-        dq.w = cur.w*prev_inv.w - cur.x*prev_inv.x - cur.y*prev_inv.y - cur.z*prev_inv.z;
-
-        // Extract yaw (y) and pitch (x) from delta quaternion in degrees
-        float yaw_rad   = 2.0f * std::atan2f(dq.y, dq.w);
-        float pitch_rad = 2.0f * std::asinf(std::clamp(dq.x, -1.0f, 1.0f));
-
-        const float kPixelsPerRad = 300.0f * current_profile_.look_sensitivity;
-        i32 dx = static_cast<i32>(yaw_rad   * kPixelsPerRad);
-        i32 dy = static_cast<i32>(pitch_rad * kPixelsPerRad);
-
-        if (dx != 0 || dy != 0) proxy.inject_mouse_move(dx, dy);
-
-        last_head_rot_ = cur;
     }
 
     if (current_profile_.snap_turn) {
         snap_cooldown_ = std::max(0.0, snap_cooldown_ - dt_ms);
+        f32 rx = vr.thumbstick_right.x;
+        constexpr f32 kThreshold = 0.7f;
         if (snap_cooldown_ <= 0.0) {
-            f32 rx = vr.thumbstick_right.x;
-            constexpr f32 kThreshold = 0.7f;
             bool snap_right = rx >  kThreshold && prev_snap_rx_ <=  kThreshold;
             bool snap_left  = rx < -kThreshold && prev_snap_rx_ >= -kThreshold;
             if (snap_right || snap_left) {
-                i32 dx = current_profile_.snap_turn_mouse_pixels;
+                // snap_turn_mouse_pixels is the calibrated pixel amount for the
+                // default 45 degrees. Scale it by the user's Snap Turn Angle so
+                // that slider actually changes how far the view rotates.
+                f32 angle = current_profile_.snap_turn_angle;
+                f32 scale = (angle > 1.0f) ? (angle / 45.0f) : 1.0f;
+                i32 dx = static_cast<i32>(current_profile_.snap_turn_mouse_pixels * scale);
                 proxy.inject_mouse_move(snap_right ? dx : -dx, 0);
                 snap_cooldown_ = 400.0;   // 400 ms lockout prevents double-snap
                 Log::debug("Snap turn: {}", snap_right ? "right" : "left");
             }
-            prev_snap_rx_ = rx;
         }
+        // Track the stick every frame, including during the cooldown. Otherwise
+        // a re-flick while locked out uses a stale prev value and the crossing
+        // is missed once the cooldown expires.
+        prev_snap_rx_ = rx;
     } else if (!current_profile_.head_aim) {
         // Free-look: right thumbstick → continuous mouse look
         f32 rx = vr.thumbstick_right.x;

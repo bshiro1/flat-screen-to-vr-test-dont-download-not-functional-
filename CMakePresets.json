@@ -3,22 +3,20 @@
     "configurePresets": [
         {
             "name": "default",
-            "displayName": "VS 2022 x64 Debug",
-            "generator": "Visual Studio 17 2022",
-            "architecture": "x64",
-            "binaryDir": "${sourceDir}/build/${presetName}",
+            "displayName": "Ninja x64 Debug (run from a vcvars64 prompt)",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/Debug",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug"
             }
         },
         {
             "name": "release",
-            "displayName": "VS 2022 x64 Release",
-            "generator": "Visual Studio 17 2022",
-            "architecture": "x64",
-            "binaryDir": "${sourceDir}/build/${presetName}",
+            "displayName": "Ninja x64 Release (run from a vcvars64 prompt)",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/Release",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+                "CMAKE_BUILD_TYPE": "Release"
             }
         }
     ],
@@ -30,6 +28,18 @@
         {
             "name": "release",
             "configurePreset": "release"
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "default",
+            "configurePreset": "default",
+            "output": { "outputOnFailure": true }
+        },
+        {
+            "name": "release",
+            "configurePreset": "release",
+            "output": { "outputOnFailure": true }
         }
     ]
 }

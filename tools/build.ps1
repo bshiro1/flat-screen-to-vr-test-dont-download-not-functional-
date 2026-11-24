@@ -1,6 +1,11 @@
-# Build script for VR Game Converter
+# Build script for VR Game Converter (CMake + Ninja + MSVC).
+#
+# Output goes to build\<Config>\ (e.g. build\Release\vr_converter.dll,
+# build\Release\vrc_injector.exe, build\Release\vrc_big_walk_mod.dll,
+# build\Release\d3d11_proxy.dll, build\Release\vrc_unit_tests.exe).
+# The companion app also searches build\Release\ and build\Debug\.
 param(
-    [ValidateSet("Debug", "Release")]
+    [ValidateSet("Debug", "Release", "RelWithDebInfo")]
     [string]$Config = "Debug",
     [switch]$Clean
 )
@@ -9,35 +14,46 @@ $ErrorActionPreference = "Stop"
 $RootDir = Split-Path -Parent $PSScriptRoot
 $BuildDir = "$RootDir\build\$Config"
 
-# Find VS Build Tools
-$VcVars = "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
-if (-not (Test-Path $VcVars)) {
-    # Try VS 2022 Community/Professional/Enterprise
-    $possible = @(
-        "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat",
-        "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat",
-        "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-    )
-    foreach ($p in $possible) {
-        if (Test-Path $p) { $VcVars = $p; break }
-    }
+# Find VS Build Tools (VS 18 / 2026 first, then VS 2022 editions)
+$VcVars = $null
+$possible = @(
+    "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Auxiliary\Build\vcvars64.bat",
+    "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat",
+    "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat",
+    "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat",
+    "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat",
+    "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+)
+foreach ($p in $possible) {
+    if (Test-Path $p) { $VcVars = $p; break }
 }
-
-if (-not (Test-Path $VcVars)) {
-    Write-Error "Visual Studio 2022 Build Tools not found. Please install them."
+if (-not $VcVars) {
+    Write-Error "Visual Studio Build Tools (vcvars64.bat) not found. Install the C++ build tools."
     exit 1
 }
 
 # Find CMake
-$Cmake = Get-Command cmake -ErrorAction SilentlyContinue
+$Cmake = (Get-Command cmake -ErrorAction SilentlyContinue).Source
 if (-not $Cmake) {
-    $CmakePath = "$env:LOCALAPPDATA\CMake\cmake-3.31.6-windows-x86_64\bin\cmake.exe"
-    if (Test-Path $CmakePath) {
-        $Cmake = $CmakePath
-    } else {
-        Write-Error "CMake not found. Install it via: winget install Kitware.CMake"
-        exit 1
+    foreach ($p in @("C:\Program Files\CMake\bin\cmake.exe",
+                     "$env:LOCALAPPDATA\CMake\cmake-3.31.6-windows-x86_64\bin\cmake.exe")) {
+        if (Test-Path $p) { $Cmake = $p; break }
     }
+}
+if (-not $Cmake) {
+    Write-Error "CMake not found. Install it via: winget install Kitware.CMake"
+    exit 1
+}
+
+# Find Ninja (the only supported generator: it produces build\<Config>\*.dll
+# directly, without the extra per-config subfolder of Visual Studio generators)
+$Ninja = (Get-Command ninja -ErrorAction SilentlyContinue).Source
+if (-not $Ninja -and (Test-Path "$env:LOCALAPPDATA\Ninja\ninja.exe")) {
+    $Ninja = "$env:LOCALAPPDATA\Ninja\ninja.exe"
+}
+if (-not $Ninja) {
+    Write-Error "Ninja not found. Install it via: winget install Ninja-build.Ninja"
+    exit 1
 }
 
 Write-Host "=== VR Game Converter Build ===" -ForegroundColor Cyan
@@ -52,33 +68,33 @@ if ($Clean -and (Test-Path $BuildDir)) {
     Remove-Item -Recurse -Force $BuildDir
 }
 
-# Create build directory
 New-Item -ItemType Directory -Path $BuildDir -Force | Out-Null
 
-# Set up VS environment
+# Set up VS environment (import the variables vcvars64.bat sets)
 Write-Host "Setting up Visual Studio environment..." -ForegroundColor Gray
-Push-Location $BuildDir
-cmd /c "`"$VcVars`" x64 && set > %TEMP%\vcvars.txt" | Out-Null
-Get-Content "$env:TEMP\vcvars.txt" | ForEach-Object {
+$EnvDump = "$env:TEMP\vrc_vcvars_$Config.txt"
+$EnvBat = "$env:TEMP\vrc_vcvars_$Config.bat"
+# A helper .bat avoids cmd /c quote-stripping of the "(x86)" path.
+Set-Content -Path $EnvBat -Encoding ASCII -Value @(
+    "@call `"$VcVars`" >nul || exit /b 1",
+    "@set > `"$EnvDump`""
+)
+cmd /c $EnvBat
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "vcvars64.bat failed"
+    exit 1
+}
+Get-Content $EnvDump | ForEach-Object {
     if ($_ -match "^(.*?)=(.*)$") {
         [Environment]::SetEnvironmentVariable($matches[1], $matches[2], "Process")
     }
 }
-Pop-Location
 
-# Configure with CMake
+# Configure
 Write-Host "Configuring with CMake..." -ForegroundColor Gray
-& $Cmake -S $RootDir -B $BuildDir -G "Ninja" `
-    -DCMAKE_BUILD_TYPE=$Config `
-    -DCMAKE_CXX_COMPILER:FILEPATH="$env:VCINSTALLDIR\Tools\MSVC\$env:VCTOOLSVERSION\bin\Hostx64\x64\cl.exe"
-
-if ($LASTEXITCODE -ne 0) {
-    # Fall back to Visual Studio generator
-    & $Cmake -S $RootDir -B $BuildDir -G "Visual Studio 17 2022" `
-        -A x64 `
-        -DCMAKE_BUILD_TYPE=$Config
-}
-
+& $Cmake -S $RootDir -B $BuildDir -G Ninja `
+    "-DCMAKE_MAKE_PROGRAM:FILEPATH=$Ninja" `
+    "-DCMAKE_BUILD_TYPE=$Config"
 if ($LASTEXITCODE -ne 0) {
     Write-Error "CMake configuration failed"
     exit 1
@@ -86,13 +102,13 @@ if ($LASTEXITCODE -ne 0) {
 
 # Build
 Write-Host "Building..." -ForegroundColor Green
-& $Cmake --build $BuildDir --config $Config
-
-if ($LASTEXITCODE -eq 0) {
-    Write-Host ""
-    Write-Host "=== Build Succeeded ===" -ForegroundColor Green
-    Write-Host "Output: $BuildDir\bin\vr_converter.dll"
-} else {
+& $Cmake --build $BuildDir
+if ($LASTEXITCODE -ne 0) {
     Write-Error "Build failed"
     exit 1
 }
+
+Write-Host ""
+Write-Host "=== Build Succeeded ===" -ForegroundColor Green
+Write-Host "Output: $BuildDir\vr_converter.dll"
+Write-Host "Unit tests: ctest --test-dir `"$BuildDir`" --output-on-failure"

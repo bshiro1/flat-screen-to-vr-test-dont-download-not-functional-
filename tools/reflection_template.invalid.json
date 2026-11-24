@@ -1,0 +1,192 @@
+{
+  "_warning": "TEMPLATE ONLY. Replace every 'unresolved' value from an authorized, build-fresh PDB/reflection dump. This file intentionally cannot validate.",
+  "build": {
+    "exe": "TOTClient-Win64-Shipping.exe",
+    "exe_sha256": "unresolved"
+  },
+  "process_event": {
+    "rva": "0x1A2C750",
+    "vtable_index": "0x44",
+    "vtable_offset": "0x220",
+    "vtable_rva": "unresolved",
+    "function_size": "unresolved"
+  },
+  "globals": {
+    "GUObjectArray": "unresolved",
+    "GWorld": "unresolved",
+    "GNames": "unresolved",
+    "FName::ToString": "unresolved"
+  },
+  "offsets": {
+    "UObject::NamePrivate": "unresolved",
+    "UFunction::FName": "unresolved",
+    "UFunction::FunctionFlags": "unresolved",
+    "UFunction::ParmsSize": "unresolved",
+    "UFunction::NumParms": "unresolved",
+    "UObject::VTable": "0x0"
+  },
+  "classes": {
+    "URBInteractFocusable": {
+      "functions": [
+        {
+          "name": "StartInteraction",
+          "role": "generic_interact_start",
+          "flags": "unresolved",
+          "fname_index": "unresolved",
+          "rva": "unresolved",
+          "params_size": "unresolved",
+          "parameters": [
+            {"name": "unresolved", "type": "unresolved", "offset": "unresolved", "size": "unresolved"}
+          ]
+        },
+        {
+          "name": "EndInteraction",
+          "role": "generic_interact_end",
+          "flags": "unresolved",
+          "fname_index": "unresolved",
+          "rva": "unresolved",
+          "params_size": "unresolved",
+          "parameters": [
+            {"name": "unresolved", "type": "unresolved", "offset": "unresolved", "size": "unresolved"}
+          ]
+        },
+        {
+          "name": "IsInteractionPossible",
+          "role": "generic_interact_check",
+          "flags": "unresolved",
+          "fname_index": "unresolved",
+          "rva": "unresolved",
+          "params_size": "unresolved",
+          "parameters": [
+            {"name": "unresolved", "type": "unresolved", "offset": "unresolved", "size": "unresolved"}
+          ]
+        }
+      ]
+    },
+    "ARBPlayer": {
+      "functions": [
+        {
+          "name": "Server_ExitCustomInteractable",
+          "role": "custom_interact_exit",
+          "flags": "unresolved",
+          "fname_index": "unresolved",
+          "rva": "unresolved",
+          "params_size": "unresolved",
+          "parameters": [
+            {"name": "unresolved", "type": "unresolved", "offset": "unresolved", "size": "unresolved"}
+          ]
+        },
+        {
+          "name": "Multicast_StartDoorOperation",
+          "role": "door_operation_rpc",
+          "flags": "unresolved",
+          "fname_index": "unresolved",
+          "rva": "unresolved",
+          "params_size": "unresolved",
+          "parameters": [
+            {"name": "unresolved", "type": "unresolved", "offset": "unresolved", "size": "unresolved"}
+          ]
+        },
+        {
+          "name": "Multicast_StartBashDoor",
+          "role": "door_bash_rpc",
+          "flags": "unresolved",
+          "fname_index": "unresolved",
+          "rva": "unresolved",
+          "params_size": "unresolved",
+          "parameters": [
+            {"name": "unresolved", "type": "unresolved", "offset": "unresolved", "size": "unresolved"}
+          ]
+        },
+        {
+          "name": "Multicast_DoItemPickup",
+          "role": "item_pickup",
+          "flags": "unresolved",
+          "fname_index": "unresolved",
+          "rva": "unresolved",
+          "params_size": "unresolved",
+          "parameters": [
+            {"name": "unresolved", "type": "unresolved", "offset": "unresolved", "size": "unresolved"}
+          ]
+        },
+        {
+          "name": "Server_TryDropItem",
+          "role": "item_drop",
+          "flags": "unresolved",
+          "fname_index": "unresolved",
+          "rva": "unresolved",
+          "params_size": "unresolved",
+          "parameters": [
+            {"name": "unresolved", "type": "unresolved", "offset": "unresolved", "size": "unresolved"}
+          ]
+        },
+        {
+          "name": "Server_SetEquippedInventoryItem",
+          "role": "item_equip",
+          "flags": "unresolved",
+          "fname_index": "unresolved",
+          "rva": "unresolved",
+          "params_size": "unresolved",
+          "parameters": [
+            {"name": "unresolved", "type": "unresolved", "offset": "unresolved", "size": "unresolved"}
+          ]
+        },
+        {
+          "name": "Multicast_PickupLargeObject",
+          "role": "large_object_pickup",
+          "flags": "unresolved",
+          "fname_index": "unresolved",
+          "rva": "unresolved",
+          "params_size": "unresolved",
+          "parameters": [
+            {"name": "unresolved", "type": "unresolved", "offset": "unresolved", "size": "unresolved"}
+          ]
+        },
+        {
+          "name": "Multicast_PutDownLargeObject",
+          "role": "large_object_putdown",
+          "flags": "unresolved",
+          "fname_index": "unresolved",
+          "rva": "unresolved",
+          "params_size": "unresolved",
+          "parameters": [
+            {"name": "unresolved", "type": "unresolved", "offset": "unresolved", "size": "unresolved"}
+          ]
+        },
+        {
+          "name": "Server_SetInteractiblePanelChildValue",
+          "role": "panel_child_value",
+          "flags": "unresolved",
+          "fname_index": "unresolved",
+          "rva": "unresolved",
+          "params_size": "unresolved",
+          "parameters": [
+            {"name": "unresolved", "type": "unresolved", "offset": "unresolved", "size": "unresolved"}
+          ]
+        },
+        {
+          "name": "Server_SetSwitchPanelPartDesiredStatusValue",
+          "role": "switch_panel_value",
+          "flags": "unresolved",
+          "fname_index": "unresolved",
+          "rva": "unresolved",
+          "params_size": "unresolved",
+          "parameters": [
+            {"name": "unresolved", "type": "unresolved", "offset": "unresolved", "size": "unresolved"}
+          ]
+        },
+        {
+          "name": "Server_StopInteractingWithPanelChild",
+          "role": "panel_stop",
+          "flags": "unresolved",
+          "fname_index": "unresolved",
+          "rva": "unresolved",
+          "params_size": "unresolved",
+          "parameters": [
+            {"name": "unresolved", "type": "unresolved", "offset": "unresolved", "size": "unresolved"}
+          ]
+        }
+      ]
+    }
+  }
+}

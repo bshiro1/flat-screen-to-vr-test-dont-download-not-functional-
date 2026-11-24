@@ -27,9 +27,11 @@ void Log::init(const std::filesystem::path& log_path, LogLevel min_level) {
 }
 
 void Log::shutdown() {
+    // Log the farewell line BEFORE taking the mutex — info() -> log() locks
+    // the same non-recursive mutex, so logging while holding it deadlocks.
+    info("Logger shutting down");
     std::lock_guard lock(mutex_);
     if (file_.is_open()) {
-        info("Logger shutting down");
         file_.close();
     }
     initialized_ = false;

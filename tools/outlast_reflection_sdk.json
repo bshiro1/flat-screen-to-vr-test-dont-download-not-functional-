@@ -1,0 +1,877 @@
+{
+  "_provenance": {
+    "method": "offline parse of build-fresh Dumper-7 SDK text plus exact installed EXE",
+    "sdk_repository": "https://github.com/AIN-sch/outlast-trials-cheat",
+    "sdk_commit": "2dce12c20a95b84c0b44638ee5aa1f9d71fa747b",
+    "sdk_files": [
+      "Basic.hpp",
+      "OPP_functions.cpp",
+      "OPP_parameters.hpp"
+    ],
+    "build_fingerprint": {
+      "exe_size": 119290880,
+      "exe_sha256": "d62df76ce8cb1c58391fbc8a1649945bc91178d27dfad2f98eaab5c907d6f27e",
+      "global_qwords": {
+        "GObjects": "0x04FB53D704FB5390",
+        "GNames": "0x04523F6006A748D0",
+        "GWorld": "0xA758A750A748A740"
+      }
+    },
+    "note": "Only reflection data was used. No anti-cheat bypass, injector, or online material from the source repository was downloaded or used."
+  },
+  "build": {
+    "exe": "TOTClient-Win64-Shipping.exe",
+    "exe_sha256": "d62df76ce8cb1c58391fbc8a1649945bc91178d27dfad2f98eaab5c907d6f27e",
+    "image_base": "0x140000000",
+    "codeview_guid": "f9f4c1c0-2ec3-bcd6-4c4c-44205044422e",
+    "codeview_age": 1
+  },
+  "process_event": {
+    "rva": "0x1A2C750",
+    "va": "0x141A2C750",
+    "vtable_index": "0x44",
+    "vtable_offset": "0x220",
+    "vtable_rva": "0x5A32130",
+    "function_size": "0x181F",
+    "status": "build-fresh static derivation plus exact-build SDK fingerprint"
+  },
+  "globals": {
+    "GUObjectArray": "0x146F83CF8",
+    "GNames": "0x146F27F00",
+    "GWorld": "0x1470FBD60",
+    "FName::ToString": null
+  },
+  "offsets": {
+    "UObject::NamePrivate": "0x18",
+    "UObject::Class": "0x10",
+    "UObject::VTable": "0x0",
+    "UField::Next": "0x28",
+    "UStruct::Children": "0x48",
+    "UFunction::FName": "0x18",
+    "UFunction::FunctionFlags": "0xB0",
+    "UFunction::NumParms": "0xB4",
+    "UFunction::ParmsSize": "0xB6",
+    "TUObjectArray::Objects": "0x0",
+    "TUObjectArray::NumElements": "0x14",
+    "TUObjectArray::NumChunks": "0x1C",
+    "FUObjectItem::Object": "0x0",
+    "FUObjectItem::Size": "0x18",
+    "FNamePool::Blocks": "0x10",
+    "FNameEntry::Name": "0x2"
+  },
+  "classes": {
+    "URBInteractFocusable": {
+      "functions": [
+        {
+          "name": "StartInteraction",
+          "role": "generic_interact_start",
+          "tier": "tier1",
+          "reflected_class": "RBInteractable",
+          "flags": "0x0C020C00",
+          "name_rva": "0x672EA96",
+          "emit_rva": "0x1481663",
+          "fname_index": null,
+          "rva": null,
+          "params_size": 16,
+          "parameters": [
+            {
+              "name": "interactorPawn",
+              "type": "class ARBPawn*",
+              "offset": 0,
+              "size": 8,
+              "properties": [
+                "Parm",
+                "ZeroConstructor",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            },
+            {
+              "name": "ReturnValue",
+              "type": "bool",
+              "offset": 8,
+              "size": 1,
+              "properties": [
+                "Parm",
+                "OutParm",
+                "ZeroConstructor",
+                "ReturnParm",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "EndInteraction",
+          "role": "generic_interact_end",
+          "tier": "tier1",
+          "reflected_class": "RBInteractable",
+          "flags": "0x0C020C00",
+          "name_rva": "0x672ED64",
+          "emit_rva": "0x14814EC",
+          "fname_index": null,
+          "rva": null,
+          "params_size": 24,
+          "parameters": [
+            {
+              "name": "bPredicted",
+              "type": "bool",
+              "offset": 0,
+              "size": 1,
+              "properties": [
+                "Parm",
+                "ZeroConstructor",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            },
+            {
+              "name": "interactorPawn",
+              "type": "class ARBPawn*",
+              "offset": 8,
+              "size": 8,
+              "properties": [
+                "Parm",
+                "ZeroConstructor",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            },
+            {
+              "name": "bInterrupted",
+              "type": "bool",
+              "offset": 16,
+              "size": 1,
+              "properties": [
+                "Parm",
+                "ZeroConstructor",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            },
+            {
+              "name": "ReturnValue",
+              "type": "bool",
+              "offset": 17,
+              "size": 1,
+              "properties": [
+                "Parm",
+                "OutParm",
+                "ZeroConstructor",
+                "ReturnParm",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "IsInteractionPossible",
+          "role": "generic_interact_check",
+          "tier": "tier1",
+          "reflected_class": "RBInteractable",
+          "flags": "0x5C020C00",
+          "name_rva": "0x67E136A",
+          "emit_rva": "0x1481582",
+          "fname_index": null,
+          "rva": null,
+          "params_size": 16,
+          "parameters": [
+            {
+              "name": "interactorPawn",
+              "type": "const class ARBPawn*",
+              "offset": 0,
+              "size": 8,
+              "properties": [
+                "ConstParm",
+                "Parm",
+                "ZeroConstructor",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            },
+            {
+              "name": "ReturnValue",
+              "type": "bool",
+              "offset": 8,
+              "size": 1,
+              "properties": [
+                "Parm",
+                "OutParm",
+                "ZeroConstructor",
+                "ReturnParm",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "ARBPlayer": {
+      "functions": [
+        {
+          "name": "Server_ExitCustomInteractable",
+          "role": "custom_interact_exit",
+          "tier": "tier1",
+          "reflected_class": "RBPlayer",
+          "flags": "0x80220CC0",
+          "name_rva": "0x67E2436",
+          "emit_rva": "0x149C23E",
+          "fname_index": null,
+          "rva": null,
+          "params_size": 8,
+          "parameters": [
+            {
+              "name": "customInteractable",
+              "type": "class ARBCustomSpecialMoveInteractableActor*",
+              "offset": 0,
+              "size": 8,
+              "properties": [
+                "Parm",
+                "ZeroConstructor",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Multicast_StartDoorOperation",
+          "role": "door_operation_rpc",
+          "tier": "tier1",
+          "reflected_class": "RBPlayer",
+          "flags": "0x00024CC0",
+          "name_rva": "0x6734E24",
+          "emit_rva": "0x149BE3D",
+          "fname_index": null,
+          "rva": null,
+          "params_size": 8,
+          "parameters": [
+            {
+              "name": "door",
+              "type": "class ARBDoor*",
+              "offset": 0,
+              "size": 8,
+              "properties": [
+                "Parm",
+                "ZeroConstructor",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Multicast_DoItemPickup",
+          "role": "item_pickup",
+          "tier": "tier1",
+          "reflected_class": "RBPlayer",
+          "flags": "0x00024CC0",
+          "name_rva": "0x671054C",
+          "emit_rva": "0x149BA23",
+          "fname_index": null,
+          "rva": null,
+          "params_size": 8,
+          "parameters": [
+            {
+              "name": "pickupItem",
+              "type": "class ARBPickup*",
+              "offset": 0,
+              "size": 8,
+              "properties": [
+                "Parm",
+                "ZeroConstructor",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Server_TryDropItem",
+          "role": "item_drop",
+          "tier": "tier1",
+          "reflected_class": "RBPlayer",
+          "flags": "0x00220CC0",
+          "name_rva": "0x674E2A6",
+          "emit_rva": "0x149C47D",
+          "fname_index": null,
+          "rva": null,
+          "params_size": 8,
+          "parameters": [
+            {
+              "name": "Item",
+              "type": "class ARBPickup*",
+              "offset": 0,
+              "size": 8,
+              "properties": [
+                "Parm",
+                "ZeroConstructor",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Server_SetEquippedInventoryItem",
+          "role": "item_equip",
+          "tier": "tier1",
+          "reflected_class": "RBPlayer",
+          "flags": "0x80220CC0",
+          "name_rva": "0x674DF40",
+          "emit_rva": "0x149C31F",
+          "fname_index": null,
+          "rva": null,
+          "params_size": 8,
+          "parameters": [
+            {
+              "name": "Item",
+              "type": "class ARBPickup*",
+              "offset": 0,
+              "size": 8,
+              "properties": [
+                "Parm",
+                "ZeroConstructor",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Multicast_PickupLargeObject",
+          "role": "large_object_pickup",
+          "tier": "tier1",
+          "reflected_class": "RBPlayer",
+          "flags": "0x00824CC0",
+          "name_rva": "0x664EA68",
+          "emit_rva": "0x149BC62",
+          "fname_index": null,
+          "rva": null,
+          "params_size": 40,
+          "parameters": [
+            {
+              "name": "largePickup",
+              "type": "class ARBLargePickup*",
+              "offset": 0,
+              "size": 8,
+              "properties": [
+                "Parm",
+                "ZeroConstructor",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            },
+            {
+              "name": "Location",
+              "type": "struct FVector",
+              "offset": 8,
+              "size": 12,
+              "properties": [
+                "ConstParm",
+                "Parm",
+                "ZeroConstructor",
+                "ReferenceParm",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            },
+            {
+              "name": "Forward",
+              "type": "struct FVector",
+              "offset": 20,
+              "size": 12,
+              "properties": [
+                "ConstParm",
+                "Parm",
+                "ZeroConstructor",
+                "ReferenceParm",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            },
+            {
+              "name": "subtype",
+              "type": "EObjectPickupSubtype",
+              "offset": 32,
+              "size": 1,
+              "properties": [
+                "Parm",
+                "ZeroConstructor",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Multicast_PutDownLargeObject",
+          "role": "large_object_putdown",
+          "tier": "tier1",
+          "reflected_class": "RBPlayer",
+          "flags": "0x00824CC0",
+          "name_rva": "0x664EAA0",
+          "emit_rva": "0x149BC94",
+          "fname_index": null,
+          "rva": null,
+          "params_size": 64,
+          "parameters": [
+            {
+              "name": "largePickup",
+              "type": "class ARBLargePickup*",
+              "offset": 0,
+              "size": 8,
+              "properties": [
+                "Parm",
+                "ZeroConstructor",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            },
+            {
+              "name": "Location",
+              "type": "struct FVector",
+              "offset": 8,
+              "size": 12,
+              "properties": [
+                "ConstParm",
+                "Parm",
+                "ZeroConstructor",
+                "ReferenceParm",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            },
+            {
+              "name": "Rotation",
+              "type": "struct FQuat",
+              "offset": 32,
+              "size": 16,
+              "properties": [
+                "ConstParm",
+                "Parm",
+                "ReferenceParm",
+                "IsPlainOldData",
+                "NoDestructor",
+                "NativeAccessSpecifierPublic"
+              ]
+            },
+            {
+              "name": "bPredicted",
+              "type": "bool",
+              "offset": 48,
+              "size": 1,
+              "properties": [
+                "Parm",
+                "ZeroConstructor",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Server_SetInteractiblePanelChildValue",
+          "role": "panel_child_value",
+          "tier": "tier1",
+          "reflected_class": "RBPlayer",
+          "flags": "0x00220CC0",
+          "name_rva": "0x67A829A",
+          "emit_rva": "0x149C351",
+          "fname_index": null,
+          "rva": null,
+          "params_size": 16,
+          "parameters": [
+            {
+              "name": "panelChild",
+              "type": "class URBInteractibleComponent*",
+              "offset": 0,
+              "size": 8,
+              "properties": [
+                "Parm",
+                "ZeroConstructor",
+                "InstancedReference",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            },
+            {
+              "name": "Value",
+              "type": "float",
+              "offset": 8,
+              "size": 4,
+              "properties": [
+                "Parm",
+                "ZeroConstructor",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Server_SetSwitchPanelPartDesiredStatusValue",
+          "role": "switch_panel_value",
+          "tier": "tier1",
+          "reflected_class": "RBPlayer",
+          "flags": "0x00220CC0",
+          "name_rva": "0x67A7412",
+          "emit_rva": "0x149C3CE",
+          "fname_index": null,
+          "rva": null,
+          "params_size": 16,
+          "parameters": [
+            {
+              "name": "panelPart",
+              "type": "class ARBSwitchPanelPart*",
+              "offset": 0,
+              "size": 8,
+              "properties": [
+                "Parm",
+                "ZeroConstructor",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            },
+            {
+              "name": "Value",
+              "type": "float",
+              "offset": 8,
+              "size": 4,
+              "properties": [
+                "Parm",
+                "ZeroConstructor",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Server_StopInteractingWithPanelChild",
+          "role": "panel_stop",
+          "tier": "tier1",
+          "reflected_class": "RBPlayer",
+          "flags": "0x80220CC0",
+          "name_rva": "0x680E828",
+          "emit_rva": "0x149C419",
+          "fname_index": null,
+          "rva": null,
+          "params_size": 0,
+          "parameters": []
+        }
+      ]
+    },
+    "ARBDoor": {
+      "functions": [
+        {
+          "name": "BP_OnDoorInteract",
+          "role": "door_interact_event",
+          "tier": "tier2",
+          "reflected_class": "RBDoor",
+          "flags": "0x08020800",
+          "name_rva": "0x664FF28",
+          "emit_rva": "0x146A3C6",
+          "fname_index": null,
+          "rva": null,
+          "params_size": 8,
+          "parameters": [
+            {
+              "name": "interactor",
+              "type": "class ARBPawn*",
+              "offset": 0,
+              "size": 8,
+              "properties": [
+                "Parm",
+                "ZeroConstructor",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Multicast_OnDoorInteract",
+          "role": "door_interact_multicast",
+          "tier": "tier2",
+          "reflected_class": "RBDoor",
+          "flags": "0x00024CC0",
+          "name_rva": "0x664FEF6",
+          "emit_rva": "0x146A4A7",
+          "fname_index": null,
+          "rva": null,
+          "params_size": 16,
+          "parameters": [
+            {
+              "name": "newDoorDesiredAngle",
+              "type": "float",
+              "offset": 0,
+              "size": 4,
+              "properties": [
+                "Parm",
+                "ZeroConstructor",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            },
+            {
+              "name": "newDoorAngleSpeedRatio",
+              "type": "float",
+              "offset": 4,
+              "size": 4,
+              "properties": [
+                "Parm",
+                "ZeroConstructor",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            },
+            {
+              "name": "Pawn",
+              "type": "class ARBPawn*",
+              "offset": 8,
+              "size": 8,
+              "properties": [
+                "Parm",
+                "ZeroConstructor",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "ARBPawn": {
+      "functions": [
+        {
+          "name": "Multicast_StartBashDoor",
+          "role": "door_bash_rpc",
+          "tier": "tier1",
+          "reflected_class": "RBPawn",
+          "flags": "0x00824CC0",
+          "name_rva": "0x66EED6A",
+          "emit_rva": "0x1498A24",
+          "fname_index": null,
+          "rva": null,
+          "params_size": 24,
+          "parameters": [
+            {
+              "name": "door",
+              "type": "class ARBDoor*",
+              "offset": 0,
+              "size": 8,
+              "properties": [
+                "Parm",
+                "ZeroConstructor",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            },
+            {
+              "name": "bashType",
+              "type": "EBashDoorType",
+              "offset": 8,
+              "size": 1,
+              "properties": [
+                "Parm",
+                "ZeroConstructor",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            },
+            {
+              "name": "bPredicted",
+              "type": "bool",
+              "offset": 9,
+              "size": 1,
+              "properties": [
+                "Parm",
+                "ZeroConstructor",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            },
+            {
+              "name": "startCharLocation",
+              "type": "struct FVector",
+              "offset": 12,
+              "size": 12,
+              "properties": [
+                "ConstParm",
+                "Parm",
+                "ZeroConstructor",
+                "ReferenceParm",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "ARBBandagePickup": {
+      "functions": [
+        {
+          "name": "BP_OnStartHoldConsumeAction",
+          "role": "hold_consume_notification",
+          "tier": "tier2",
+          "reflected_class": "RBBandagePickup",
+          "flags": "0x08080800",
+          "name_rva": "0x672FFD0",
+          "emit_rva": "0x145506C",
+          "fname_index": null,
+          "rva": null,
+          "params_size": 8,
+          "parameters": [
+            {
+              "name": "Pawn",
+              "type": "class ARBPawn*",
+              "offset": 0,
+              "size": 8,
+              "properties": [
+                "Parm",
+                "ZeroConstructor",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "URBMallTorturePumpComponent": {
+      "functions": [
+        {
+          "name": "Multicast_Pump",
+          "role": "pump_multicast",
+          "tier": "tier2",
+          "reflected_class": "RBMallTorturePumpComponent",
+          "flags": "0x00024CC0",
+          "name_rva": "0x6711E20",
+          "emit_rva": "0x148C308",
+          "fname_index": null,
+          "rva": null,
+          "params_size": 0,
+          "parameters": []
+        }
+      ]
+    },
+    "ARBNPC": {
+      "functions": [
+        {
+          "name": "Multicast_StartHidespotPeeking",
+          "role": "hidespot_peek_notification",
+          "tier": "tier2",
+          "reflected_class": "RBNPC",
+          "flags": "0x00024CC0",
+          "name_rva": "0x6785EFE",
+          "emit_rva": "0x1492795",
+          "fname_index": null,
+          "rva": null,
+          "params_size": 16,
+          "parameters": [
+            {
+              "name": "hidespot",
+              "type": "class URBHidespotComponent*",
+              "offset": 0,
+              "size": 8,
+              "properties": [
+                "Parm",
+                "ZeroConstructor",
+                "InstancedReference",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            },
+            {
+              "name": "peekingAnim",
+              "type": "class UAnimSequence*",
+              "offset": 8,
+              "size": 8,
+              "properties": [
+                "Parm",
+                "ZeroConstructor",
+                "IsPlainOldData",
+                "NoDestructor",
+                "HasGetValueTypeHash",
+                "NativeAccessSpecifierPublic"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

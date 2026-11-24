@@ -1,6 +1,8 @@
 #include "input_proxy.h"
+#include "core/config.h"
 #include "core/logging.h"
 #include <XInput.h>
+#include <algorithm>
 #include <chrono>
 
 #pragma comment(lib, "XInput9_1_0.lib")
@@ -52,17 +54,19 @@ void InputProxy::poll_gamepad() {
     map_button(InputAction::Crouch,         XINPUT_GAMEPAD_RIGHT_THUMB);
     map_button(InputAction::Jump,           XINPUT_GAMEPAD_LEFT_SHOULDER);
 
-    // Left stick = movement
-    action_states_[InputAction::MoveForward]  = std::max(0.0f, -gamepad.sThumbLY / 32768.0f);
-    action_states_[InputAction::MoveBackward] = std::max(0.0f,  gamepad.sThumbLY / 32768.0f);
+    // Left stick = movement. XInput sThumbLY is positive when pushed UP,
+    // so up = forward.
+    action_states_[InputAction::MoveForward]  = std::max(0.0f,  gamepad.sThumbLY / 32768.0f);
+    action_states_[InputAction::MoveBackward] = std::max(0.0f, -gamepad.sThumbLY / 32768.0f);
     action_states_[InputAction::MoveLeft]     = std::max(0.0f, -gamepad.sThumbLX / 32768.0f);
     action_states_[InputAction::MoveRight]    = std::max(0.0f,  gamepad.sThumbLX / 32768.0f);
 
-    // Right stick = look
-    action_states_[InputAction::LookUp]     += gamepad.sThumbRY / 32768.0f;
-    action_states_[InputAction::LookDown]   += -gamepad.sThumbRY / 32768.0f;
-    action_states_[InputAction::LookLeft]   += -gamepad.sThumbRX / 32768.0f;
-    action_states_[InputAction::LookRight]  += gamepad.sThumbRX / 32768.0f;
+    // Right stick = look. Assigned, not accumulated: these are per-poll
+    // instantaneous values.
+    action_states_[InputAction::LookUp]     = std::max(0.0f,  gamepad.sThumbRY / 32768.0f);
+    action_states_[InputAction::LookDown]   = std::max(0.0f, -gamepad.sThumbRY / 32768.0f);
+    action_states_[InputAction::LookLeft]   = std::max(0.0f, -gamepad.sThumbRX / 32768.0f);
+    action_states_[InputAction::LookRight]  = std::max(0.0f,  gamepad.sThumbRX / 32768.0f);
 
     // Triggers
     action_states_[InputAction::PrimaryFire] = gamepad.bLeftTrigger / 255.0f;
@@ -114,15 +118,101 @@ void InputProxy::set_action_mapping(InputAction action, const std::string& bindi
               static_cast<u32>(action), binding);
 }
 
+namespace {
+
+bool legacy_injection_enabled() {
+    const auto profile = Config::instance().current_profile_copy();
+    return profile.injection_method != InjectionMethod::SixDofBridge ||
+           profile.bridge_send_legacy_input;
+}
+
+// SendInput delivers to whichever window has keyboard focus. Only inject while
+// a window of this (the game's) process is in the foreground, so VR input
+// never types or clicks into other applications while the headset is on.
+// Returns the foreground window's thread id via `fg_thread` when it is ours.
+bool game_window_focused(DWORD* fg_thread = nullptr) {
+    HWND fg = GetForegroundWindow();
+    if (!fg) return false;
+    DWORD pid = 0;
+    DWORD tid = GetWindowThreadProcessId(fg, &pid);
+    if (pid != GetCurrentProcessId()) return false;
+    if (fg_thread) *fg_thread = tid;
+    return true;
+}
+
+// Keys whose scan code needs KEYEVENTF_EXTENDEDKEY (the E0 prefix). Listed
+// explicitly because MapVirtualKey does not report the prefix for all of them.
+bool is_extended_key(u16 vk) {
+    switch (vk) {
+        case VK_INSERT: case VK_DELETE: case VK_HOME: case VK_END:
+        case VK_PRIOR:  case VK_NEXT:
+        case VK_LEFT:   case VK_RIGHT:  case VK_UP:   case VK_DOWN:
+        case VK_RCONTROL: case VK_RMENU:
+        case VK_LWIN:   case VK_RWIN:   case VK_APPS:
+        case VK_NUMLOCK: case VK_DIVIDE: case VK_SNAPSHOT: case VK_CANCEL:
+            return true;
+        default:
+            return false;
+    }
+}
+
+} // namespace
+
+bool InputProxy::allow_injection(bool is_release, const char* what) {
+    if (!legacy_injection_enabled()) return false;
+    // Releases always go through: dropping one would leave the key logically
+    // held system-wide (e.g. a stuck Shift) after focus returns.
+    if (is_release || game_window_focused()) return true;
+
+    ++dropped_while_unfocused_;
+    const auto now = std::chrono::steady_clock::now();
+    if (now - last_drop_log_ >= std::chrono::seconds(5)) {
+        Log::info("Input: game window not in foreground; dropped {} injected event(s) "
+                  "(latest: {})", dropped_while_unfocused_, what);
+        dropped_while_unfocused_ = 0;
+        last_drop_log_ = now;
+    }
+    return false;
+}
+
 void InputProxy::inject_keyboard_input(u16 vk_code, bool press) {
+    std::lock_guard<std::mutex> lock(injection_mutex_);
+    if (!allow_injection(!press, "keyboard")) return;
+
+    // Scan-code events reach raw-input and DirectInput games, which ignore
+    // VK-only events. Map with the game window's keyboard layout.
+    DWORD fg_thread = 0;
+    game_window_focused(&fg_thread);
+    HKL layout = GetKeyboardLayout(fg_thread);
+    const UINT sc_ex = MapVirtualKeyExW(vk_code, MAPVK_VK_TO_VSC_EX, layout);
+    const WORD scan = static_cast<WORD>(sc_ex & 0xFF);
+
     INPUT ip = {};
     ip.type = INPUT_KEYBOARD;
-    ip.ki.wVk = vk_code;
-    ip.ki.dwFlags = press ? 0 : KEYEVENTF_KEYUP;
+    if (scan != 0 && vk_code != VK_PAUSE) {
+        const bool extended = is_extended_key(vk_code) ||
+                              (sc_ex & 0xFF00) == 0xE000 || (sc_ex & 0xFF00) == 0xE100;
+        ip.ki.wScan = scan;
+        ip.ki.dwFlags = KEYEVENTF_SCANCODE |
+                        (extended ? KEYEVENTF_EXTENDEDKEY : 0) |
+                        (press ? 0 : KEYEVENTF_KEYUP);
+    } else {
+        // No scan code (media keys, Pause's E1 sequence): VK-only event.
+        ip.ki.wVk = vk_code;
+        ip.ki.dwFlags = press ? 0 : KEYEVENTF_KEYUP;
+    }
     SendInput(1, &ip, sizeof(INPUT));
 }
 
 void InputProxy::inject_mouse_move(i32 dx, i32 dy) {
+    std::lock_guard<std::mutex> lock(injection_mutex_);
+    if (!allow_injection(false, "mouse move")) return;
+    // A tracker glitch must never inject a single-frame look snap large
+    // enough to whip the camera. Normal deltas are only a few pixels.
+    constexpr i32 kMaxDelta = 200;
+    dx = std::clamp(dx, -kMaxDelta, kMaxDelta);
+    dy = std::clamp(dy, -kMaxDelta, kMaxDelta);
+
     INPUT ip = {};
     ip.type = INPUT_MOUSE;
     ip.mi.dx = dx;
@@ -132,6 +222,8 @@ void InputProxy::inject_mouse_move(i32 dx, i32 dy) {
 }
 
 void InputProxy::inject_mouse_button(u8 button, bool press) {
+    std::lock_guard<std::mutex> lock(injection_mutex_);
+    if (!allow_injection(!press, "mouse button")) return;
     INPUT ip = {};
     ip.type = INPUT_MOUSE;
     DWORD flags = 0;
@@ -139,15 +231,18 @@ void InputProxy::inject_mouse_button(u8 button, bool press) {
         case 0: flags = press ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_LEFTUP; break;
         case 1: flags = press ? MOUSEEVENTF_RIGHTDOWN : MOUSEEVENTF_RIGHTUP; break;
         case 2: flags = press ? MOUSEEVENTF_MIDDLEDOWN : MOUSEEVENTF_MIDDLEUP; break;
+        default: return;
     }
     ip.mi.dwFlags = flags;
     SendInput(1, &ip, sizeof(INPUT));
 }
 
 void InputProxy::inject_gamepad_button(u8 button, bool press) {
-    // XInput gamepad button injection is done via XInputSend or virtual driver
-    // For MVP, fall back to keyboard injection
-    Log::debug("Gamepad injection not yet implemented");
+    (void)button;
+    (void)press;
+    // XInput has no injection API; a virtual gamepad driver would be needed.
+    // Bindings that target the game use keyboard/mouse injection instead.
+    Log::debug("Gamepad button injection is not supported");
 }
 
 void InputProxy::fire_event(const InputEvent& event) {

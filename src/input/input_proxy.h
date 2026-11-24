@@ -4,8 +4,10 @@
 #include "input/xr_input.h"
 #include <windows.h>
 #include <unordered_map>
+#include <chrono>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <vector>
 
 namespace vrc {
@@ -67,7 +69,9 @@ public:
     using InputCallback = std::function<void(const InputEvent&)>;
     void set_callback(InputCallback cb) { callback_ = cb; }
 
-    // Inject simulated input back into the game
+    // Inject simulated input into the game with SendInput. Keyboard events
+    // are sent as scan codes. Presses and mouse moves are dropped while no
+    // window of this process is in the foreground.
     void inject_keyboard_input(u16 vk_code, bool press);
     void inject_mouse_move(i32 dx, i32 dy);
     void inject_mouse_button(u8 button, bool press);
@@ -104,6 +108,18 @@ private:
     // Raw input state
     u8 keyboard_state_[256] = {};
     bool gamepad_connected_ = false;
+
+    // Decides whether an injected event may be sent: legacy injection must be
+    // enabled, and presses/moves are dropped unless the game window is in the
+    // foreground (releases always pass). Caller holds injection_mutex_.
+    bool allow_injection(bool is_release, const char* what);
+
+    // Injection can be requested from more than one thread (the XR frame
+    // thread and the Present thread). Serialize it, and guard the drop
+    // counters below.
+    std::mutex injection_mutex_;
+    u32 dropped_while_unfocused_ = 0;
+    std::chrono::steady_clock::time_point last_drop_log_{};
 };
 
 } // namespace vrc

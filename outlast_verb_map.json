@@ -1,0 +1,234 @@
+{
+  "schema_version": 1,
+  "status": "static-unvalidated",
+  "dispatch_allowed": false,
+  "scope": "solo/private only; never Invasion, matchmaking, or EAC bypass",
+  "build": {
+    "exe": "TOTClient-Win64-Shipping.exe",
+    "sha256": "D62DF76CE8CB1C58391FBC8A1649945BC91178D27DFAD2F98EAAB5C907D6F27E",
+    "image_base": "0x140000000"
+  },
+  "process_event": {
+    "rva": "0x1A2C750",
+    "va": "0x141A2C750",
+    "vtable_index": "0x44",
+    "vtable_offset": "0x220",
+    "status": "static-identified from exact PE; live vtable/FName validation still required"
+  },
+  "extraction": {
+    "method": "generated FClassRegistrationInfo FName blocks in exact installed PE",
+    "class_reg_call": "0x140B737D0",
+    "fname_ctor": "0x141A27610",
+    "caveat": "class ownership is static only; UFunction flags and parameter layouts remain unresolved"
+  },
+  "tiers": {
+    "tier1": "static class/function name bound in generated registration code; candidate only until live reflection confirms it",
+    "tier2": "notification or multicast-style name; do not treat as an authoritative call verb",
+    "unresolved": "no defensible static class/function binding found"
+  },
+  "candidates": [
+    {
+      "role": "generic_interact_start",
+      "tier": "tier1",
+      "class": "URBInteractFocusable",
+      "function": "StartInteraction",
+      "name_rva": "0x672EA96",
+      "emit_rva": "0x1481663",
+      "parameter_layout": "unresolved",
+      "note": "Core interact verb; needs live reflection and param layout before any dispatch."
+    },
+    {
+      "role": "generic_interact_end",
+      "tier": "tier1",
+      "class": "URBInteractFocusable",
+      "function": "EndInteraction",
+      "name_rva": "0x672ED64",
+      "emit_rva": "0x14814EC",
+      "parameter_layout": "unresolved",
+      "note": "Core interact release verb."
+    },
+    {
+      "role": "generic_interact_check",
+      "tier": "tier1",
+      "class": "URBInteractFocusable",
+      "function": "IsInteractionPossible",
+      "name_rva": "0x67E136A",
+      "emit_rva": "0x1481582",
+      "parameter_layout": "unresolved",
+      "note": "Candidate focus-eligibility predicate; verify side effects before calling."
+    },
+    {
+      "role": "custom_interact_exit",
+      "tier": "tier1",
+      "class": "ARBPlayer",
+      "function": "Server_ExitCustomInteractable",
+      "name_rva": "0x67E2436",
+      "emit_rva": "0x149C23E",
+      "parameter_layout": "unresolved",
+      "note": "Server RPC-shaped verb; replication authority must remain with the game."
+    },
+    {
+      "role": "door_interact_event",
+      "tier": "tier2",
+      "class": "ARBDoor",
+      "function": "BP_OnDoorInteract",
+      "name_rva": "0x664FF28",
+      "emit_rva": "0x146A3C6",
+      "parameter_layout": "unresolved",
+      "note": "Likely notification/event; do not call as authority without live validation."
+    },
+    {
+      "role": "door_interact_multicast",
+      "tier": "tier2",
+      "class": "ARBDoor",
+      "function": "Multicast_OnDoorInteract",
+      "name_rva": "0x664FEF6",
+      "emit_rva": "0x146A4A7",
+      "parameter_layout": "unresolved",
+      "note": "Multicast notification, not a safe client authority verb."
+    },
+    {
+      "role": "door_operation_rpc",
+      "tier": "tier1",
+      "class": "ARBPlayer",
+      "function": "Multicast_StartDoorOperation",
+      "name_rva": "0x6734E24",
+      "emit_rva": "0x149BE3D",
+      "parameter_layout": "unresolved",
+      "note": "Player-side door operation candidate."
+    },
+    {
+      "role": "door_bash_rpc",
+      "tier": "tier1",
+      "class": "ARBPawn",
+      "function": "Multicast_StartBashDoor",
+      "name_rva": "0x66EED6A",
+      "emit_rva": "0x1498A24",
+      "parameter_layout": "unresolved",
+      "note": "Bash candidate; verify it is a callable verb and not an animation notification."
+    },
+    {
+      "role": "item_pickup",
+      "tier": "tier1",
+      "class": "ARBPlayer",
+      "function": "Multicast_DoItemPickup",
+      "name_rva": "0x671054C",
+      "emit_rva": "0x149BA23",
+      "parameter_layout": "unresolved",
+      "note": "Inventory remains authoritative; this is only a translated verb candidate."
+    },
+    {
+      "role": "item_drop",
+      "tier": "tier1",
+      "class": "ARBPlayer",
+      "function": "Server_TryDropItem",
+      "name_rva": "0x674E2A6",
+      "emit_rva": "0x149C47D",
+      "parameter_layout": "unresolved",
+      "note": "Server RPC-shaped verb."
+    },
+    {
+      "role": "item_equip",
+      "tier": "tier1",
+      "class": "ARBPlayer",
+      "function": "Server_SetEquippedInventoryItem",
+      "name_rva": "0x674DF40",
+      "emit_rva": "0x149C31F",
+      "parameter_layout": "unresolved",
+      "note": "Equip candidate; parameter object/reference still unknown."
+    },
+    {
+      "role": "large_object_pickup",
+      "tier": "tier1",
+      "class": "ARBPlayer",
+      "function": "Multicast_PickupLargeObject",
+      "name_rva": "0x664EA68",
+      "emit_rva": "0x149BC62",
+      "parameter_layout": "unresolved",
+      "note": "Large-object carry candidate."
+    },
+    {
+      "role": "large_object_putdown",
+      "tier": "tier1",
+      "class": "ARBPlayer",
+      "function": "Multicast_PutDownLargeObject",
+      "name_rva": "0x664EAA0",
+      "emit_rva": "0x149BC94",
+      "parameter_layout": "unresolved",
+      "note": "Large-object release candidate."
+    },
+    {
+      "role": "hold_consume_notification",
+      "tier": "tier2",
+      "class": "ARBBandagePickup",
+      "function": "BP_OnStartHoldConsumeAction",
+      "name_rva": "0x672FFD0",
+      "emit_rva": "0x145506C",
+      "parameter_layout": "unresolved",
+      "note": "Also appears on ARBDeployablePickup and ARBImposterTrap; likely a notification, not a start verb."
+    },
+    {
+      "role": "panel_child_value",
+      "tier": "tier1",
+      "class": "ARBPlayer",
+      "function": "Server_SetInteractiblePanelChildValue",
+      "name_rva": "0x67A829A",
+      "emit_rva": "0x149C351",
+      "parameter_layout": "unresolved",
+      "note": "Generic interactable-panel child value candidate."
+    },
+    {
+      "role": "switch_panel_value",
+      "tier": "tier1",
+      "class": "ARBPlayer",
+      "function": "Server_SetSwitchPanelPartDesiredStatusValue",
+      "name_rva": "0x67A7412",
+      "emit_rva": "0x149C3CE",
+      "parameter_layout": "unresolved",
+      "note": "Switch/fusebox candidate; enum value layout unknown."
+    },
+    {
+      "role": "panel_stop",
+      "tier": "tier1",
+      "class": "ARBPlayer",
+      "function": "Server_StopInteractingWithPanelChild",
+      "name_rva": "0x680E828",
+      "emit_rva": "0x149C419",
+      "parameter_layout": "unresolved",
+      "note": "Panel release candidate."
+    },
+    {
+      "role": "pump_multicast",
+      "tier": "tier2",
+      "class": "URBMallTorturePumpComponent",
+      "function": "Multicast_Pump",
+      "name_rva": "0x6711E20",
+      "emit_rva": "0x148C308",
+      "parameter_layout": "unresolved",
+      "note": "Specific Mall Torture pump; likely presentation multicast."
+    },
+    {
+      "role": "hidespot_peek_notification",
+      "tier": "tier2",
+      "class": "ARBNPC",
+      "function": "Multicast_StartHidespotPeeking",
+      "name_rva": "0x6785EFE",
+      "emit_rva": "0x1492795",
+      "parameter_layout": "unresolved",
+      "note": "Notification on NPC class, not a player enter-hide verb."
+    }
+  ],
+  "excluded": [
+    "ValveIndex_* strings are OpenVR input noise, not valve gameplay verbs.",
+    "Server_Cheat_* and Client_Cheat_* are debug-only and must never be mapped.",
+    "BP_*, Event_*, On*, and Multicast_* names are typically notifications; promote only after live reflection."
+  ],
+  "unresolved_gaps": [
+    "UFunction FunctionFlags for every candidate.",
+    "Parameter struct layout and sizes for every candidate.",
+    "Live vtable slot 0x44 / ProcessEvent RVA 0x1A2C750 confirmation.",
+    "GUObjectArray, GWorld, GNames, FName::ToString, and FName constructor runtime addresses.",
+    "Enter-hide, self-revive, hold-breath, climb/vault/mantle/vent, generic keypad/button/switch/fuse/plug, craft/convert, and push/pull call verbs.",
+    "Any live ProcessEvent/vtable-shadow hook validation under EAC; injection attempt failed with VirtualAllocEx error 5."
+  ]
+}

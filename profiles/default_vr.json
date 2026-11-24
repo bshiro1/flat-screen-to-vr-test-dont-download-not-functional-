@@ -4,6 +4,8 @@
     "look_sensitivity": 1.0,
     "movement_smoothing": 0.3,
     "head_aim": true,
+    "invert_x": false,
+    "invert_y": false,
     "snap_turn": true,
     "snap_turn_angle": 45.0,
     "snap_turn_mouse_pixels": 300,

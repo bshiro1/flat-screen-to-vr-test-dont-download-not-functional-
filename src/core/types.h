@@ -139,6 +139,21 @@ struct Matrix4 {
         return m;
     }
 
+    // D3D convention: clip-space Z in [0, w], matching the hardware depth
+    // buffer directly. Required when reconstructing world positions from a
+    // captured depth texture without a remap.
+    static Matrix4 perspective_d3d(f32 fov_y, f32 aspect, f32 z_near, f32 z_far) {
+        Matrix4 m;
+        f32 f = 1.0f / tanf(fov_y / 2.0f);
+        m.m[0] = f / aspect;
+        m.m[5] = f;
+        m.m[10] = z_far / (z_near - z_far);
+        m.m[11] = -1.0f;
+        m.m[14] = (z_far * z_near) / (z_near - z_far);
+        m.m[15] = 0.0f;
+        return m;
+    }
+
     static Matrix4 look_at(const Vec3& eye, const Vec3& target, const Vec3& up) {
         Vec3 f = { target.x - eye.x, target.y - eye.y, target.z - eye.z };
         f32 flen = sqrtf(f.x*f.x + f.y*f.y + f.z*f.z);
@@ -172,6 +187,55 @@ struct Matrix4 {
         return m;
     }
 };
+
+// General 4x4 inverse (cofactor expansion). Returns identity if the matrix
+// is singular. Needed to feed inverse view-projection to the reprojection
+// shader for depth -> world-position reconstruction.
+inline Matrix4 inverse(const Matrix4& src) {
+    const auto& m = src.m;
+    std::array<f32, 16> inv;
+
+    inv[0]  =  m[5]*m[10]*m[15] - m[5]*m[11]*m[14] - m[9]*m[6]*m[15] +
+               m[9]*m[7]*m[14] + m[13]*m[6]*m[11] - m[13]*m[7]*m[10];
+    inv[4]  = -m[4]*m[10]*m[15] + m[4]*m[11]*m[14] + m[8]*m[6]*m[15] -
+               m[8]*m[7]*m[14] - m[12]*m[6]*m[11] + m[12]*m[7]*m[10];
+    inv[8]  =  m[4]*m[9]*m[15] - m[4]*m[11]*m[13] - m[8]*m[5]*m[15] +
+               m[8]*m[7]*m[13] + m[12]*m[5]*m[11] - m[12]*m[7]*m[9];
+    inv[12] = -m[4]*m[9]*m[14] + m[4]*m[10]*m[13] + m[8]*m[5]*m[14] -
+               m[8]*m[6]*m[13] - m[12]*m[5]*m[10] + m[12]*m[6]*m[9];
+    inv[1]  = -m[1]*m[10]*m[15] + m[1]*m[11]*m[14] + m[9]*m[2]*m[15] -
+               m[9]*m[3]*m[14] - m[13]*m[2]*m[11] + m[13]*m[3]*m[10];
+    inv[5]  =  m[0]*m[10]*m[15] - m[0]*m[11]*m[14] - m[8]*m[2]*m[15] +
+               m[8]*m[3]*m[14] + m[12]*m[2]*m[11] - m[12]*m[3]*m[10];
+    inv[9]  = -m[0]*m[9]*m[15] + m[0]*m[11]*m[13] + m[8]*m[1]*m[15] -
+               m[8]*m[3]*m[13] - m[12]*m[1]*m[11] + m[12]*m[3]*m[9];
+    inv[13] =  m[0]*m[9]*m[14] - m[0]*m[10]*m[13] - m[8]*m[1]*m[14] +
+               m[8]*m[2]*m[13] + m[12]*m[1]*m[10] - m[12]*m[2]*m[9];
+    inv[2]  =  m[1]*m[6]*m[15] - m[1]*m[7]*m[14] - m[5]*m[2]*m[15] +
+               m[5]*m[3]*m[14] + m[13]*m[2]*m[7] - m[13]*m[3]*m[6];
+    inv[6]  = -m[0]*m[6]*m[15] + m[0]*m[7]*m[14] + m[4]*m[2]*m[15] -
+               m[4]*m[3]*m[14] - m[12]*m[2]*m[7] + m[12]*m[3]*m[6];
+    inv[10] =  m[0]*m[5]*m[15] - m[0]*m[7]*m[13] - m[4]*m[1]*m[15] +
+               m[4]*m[3]*m[13] + m[12]*m[1]*m[7] - m[12]*m[3]*m[5];
+    inv[14] = -m[0]*m[5]*m[14] + m[0]*m[6]*m[13] + m[4]*m[1]*m[14] -
+               m[4]*m[2]*m[13] - m[12]*m[1]*m[6] + m[12]*m[2]*m[5];
+    inv[3]  = -m[1]*m[6]*m[11] + m[1]*m[7]*m[10] + m[5]*m[2]*m[11] -
+               m[5]*m[3]*m[10] - m[9]*m[2]*m[7] + m[9]*m[3]*m[6];
+    inv[7]  =  m[0]*m[6]*m[11] - m[0]*m[7]*m[10] - m[4]*m[2]*m[11] +
+               m[4]*m[3]*m[10] + m[8]*m[2]*m[7] - m[8]*m[3]*m[6];
+    inv[11] = -m[0]*m[5]*m[11] + m[0]*m[7]*m[9] + m[4]*m[1]*m[11] -
+               m[4]*m[3]*m[9] - m[8]*m[1]*m[7] + m[8]*m[3]*m[5];
+    inv[15] =  m[0]*m[5]*m[10] - m[0]*m[6]*m[9] - m[4]*m[1]*m[10] +
+               m[4]*m[2]*m[9] + m[8]*m[1]*m[6] - m[8]*m[2]*m[5];
+
+    f32 det = m[0]*inv[0] + m[1]*inv[4] + m[2]*inv[8] + m[3]*inv[12];
+    if (fabsf(det) < 1e-12f) return Matrix4::identity();
+
+    f32 inv_det = 1.0f / det;
+    Matrix4 out;
+    for (i32 i = 0; i < 16; i++) out.m[i] = inv[i] * inv_det;
+    return out;
+}
 
 inline Matrix4 multiply(const Matrix4& a, const Matrix4& b) {
     Matrix4 r;
@@ -236,20 +300,88 @@ enum class LogLevel : u8 {
     Fatal
 };
 
+// Selects how the captured game frame is shown in the headset.
+//   Screen  — the game frame on a flat virtual screen (XrCompositionLayerQuad).
+//             The runtime renders the quad per eye, so stereo, IPD and
+//             reprojection are correct by construction. Default, D3D11+D3D12.
+//   Depth3D — per-pixel reprojection of the game frame using the game's depth
+//             buffer (D3D11 only). Falls back to Screen when no usable depth
+//             buffer has been captured. Experimental.
+// The old value 2 ("TrueStereo", mouse-yaw alternate-frame capture) was
+// removed: rotating a camera produces no depth-dependent parallax. Config
+// files that still contain 2 are loaded as Screen.
+enum class RenderMode : u8 {
+    Screen     = 0,
+    Depth3D    = 1,
+};
+
+// Selects how VR input reaches the game.
+//   LegacySendInput — current Win32 SendInput path. Default and safest.
+//   SixDofBridge    — still injects legacy actions when enabled, and publishes
+//                     head/controller/FBT poses through a named shared-memory
+//                     bridge plus exported C API for game-side mods.
+enum class InjectionMethod : u8 {
+    LegacySendInput = 0,
+    SixDofBridge    = 1,
+};
+
 struct ConfigProfile {
     std::string name = "default";
     f32 ipd = 0.064f;
     f32 world_scale = 1.0f;
+    // Screen mode: distance from the viewer to the virtual screen (metres).
+    // Depth3D: distance at which the game image plane is placed.
     f32 convergence_distance = 5.0f;
-    f32 eye_height = 1.6f;
+    // Screen mode: true = screen fixed in the room (world-locked, LOCAL space);
+    // false = screen follows the head (head-locked, VIEW space).
     bool enable_head_tracking = true;
-    bool enable_chaperone = false;
+    // Horizontal angular size of the virtual screen in degrees. 0 = default
+    // (kDefaultScreenFovDegrees). Also the image-plane FOV in Depth3D.
     f32 fov_override = 0.0f;
-    bool foveated_rendering = false;
-    bool dynamic_resolution = true;
+    // Multiplier on eye/quad swapchain resolution. Applied when the XR session
+    // (and its swapchains) is created, i.e. on the next start, not live.
     f32 render_scale = 1.0f;
+    RenderMode render_mode = RenderMode::Screen;
     std::string input_profile = "default_vr";
+    // Depth3D only: swap which reprojected view goes to which eye. Screen mode
+    // is rendered per-eye by the runtime and cannot be swapped.
+    bool swap_eyes = false;
+    // Depth3D only: tints the top-right corner of the view rendered FOR the
+    // left eye red and FOR the right eye blue (after swap_eyes is applied).
+    bool show_eye_debug = false;
+
+    // Input injection selection and the optional 6DoF/FBT data bridge.
+    InjectionMethod injection_method = InjectionMethod::LegacySendInput;
+    bool bridge_send_legacy_input = true;
+    std::string bridge_name = "Local\\VRGameConverter_6DoF_v1";
+
+    // Optional game-side mod injected by the companion's Play in VR loader.
+    // Empty path means "use the bundled vrc_big_walk_mod.dll" when available.
+    bool game_mod_enabled = false;
+    std::string game_mod_path;
+
+    bool fbt_enabled = false;
+    std::string fbt_hips_role = "/user/vive_tracker_htcx/role/waist";
+    std::string fbt_left_foot_role = "/user/vive_tracker_htcx/role/left_foot";
+    std::string fbt_right_foot_role = "/user/vive_tracker_htcx/role/right_foot";
+    std::string fbt_chest_role = "/user/vive_tracker_htcx/role/chest";
+    std::string fbt_left_shoulder_role = "/user/vive_tracker_htcx/role/left_shoulder";
+    std::string fbt_right_shoulder_role = "/user/vive_tracker_htcx/role/right_shoulder";
+
+    // Volumetric parallax. When depth capture succeeds and render_mode is
+    // Depth3D, the real depth reprojection path is used instead of the fake
+    // stereo blit. Falls back to the blit when depth is unavailable.
+    bool volumetric_parallax = false;
+    f32 depth_near_plane = 0.01f;
+    f32 depth_far_plane = 1000.0f;
+    f32 depth_fov_degrees = 90.0f;
+    f32 parallax_strength = 1.0f;
+    // Unity (D3D11) and Unreal both use reversed-Z depth (near = 1, far = 0).
+    bool depth_reversed_z = true;
 };
+
+// Default horizontal angular size of the Screen-mode virtual screen.
+inline constexpr f32 kDefaultScreenFovDegrees = 60.0f;
 
 struct HookContext {
     void* device = nullptr;
@@ -267,6 +399,14 @@ struct FrameCapture {
     u32 height = 0;
     u64 frame_index = 0;
     f64 timestamp_ms = 0.0;
+
+    // Optional game depth-stencil texture captured by the D3D11 hook. The hook
+    // AddRefs it for the capture; the consumer must Release it exactly once.
+    void* depth_texture = nullptr;
+    u32 depth_width = 0;
+    u32 depth_height = 0;
+    u32 depth_format = 0;        // DXGI_FORMAT as u32; 0 = unknown
+    u32 depth_sample_count = 0;  // 0 = no depth captured, 1 = single-sample
 };
 
 struct LatencyStats {

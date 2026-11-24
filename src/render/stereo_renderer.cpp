@@ -1,11 +1,154 @@
 #include "stereo_renderer.h"
 #include "core/logging.h"
 #include "core/config.h"
-#include "overlay/imgui_overlay.h"
-#include <cassert>
+#include <algorithm>
 #include <windows.h>
 
 namespace vrc {
+
+// All shared handles here come from IDXGIResource::GetSharedHandle(). They are
+// legacy (non-NT) handles whose lifetime is tied to the texture, so they are
+// never passed to CloseHandle.
+//
+// Keyed-mutex protocol for every shared texture:
+//   writer (Present thread) acquires key 1 (an unread frame: overwrite it) or
+//   key 0 (the reader consumed the last one), copies, releases key 1;
+//   reader (XR thread) acquires key 1, copies to its local texture, releases
+//   key 0. Both sides use timeout 0, so neither thread ever waits on the other.
+
+template <typename T>
+static void safe_release(T*& p) {
+    if (p) { p->Release(); p = nullptr; }
+}
+
+static bool owns_key(HRESULT hr) {
+    // WAIT_ABANDONED still transfers ownership (the other device went away
+    // while holding the key). WAIT_TIMEOUT is a positive HRESULT, so
+    // SUCCEEDED() cannot be used here.
+    return hr == S_OK || hr == static_cast<HRESULT>(WAIT_ABANDONED);
+}
+
+// Formats for a captured colour buffer. The shared/local copies use the
+// TYPELESS family so the XR side can read 8-bit frames through an *_SRGB view
+// (hardware sRGB decode, correct linear-light filtering). Formats without an
+// sRGB view are decoded in the shader (10-bit) or are already linear (FP16).
+struct ColorFormats {
+    DXGI_FORMAT typeless = DXGI_FORMAT_UNKNOWN;
+    DXGI_FORMAT typed = DXGI_FORMAT_UNKNOWN;      // fallback texture + MSAA resolve
+    DXGI_FORMAT srgb_view = DXGI_FORMAT_UNKNOWN;  // UNKNOWN if none exists
+    bool linear = false;                          // float: already linear light
+};
+
+static bool color_formats(DXGI_FORMAT source, ColorFormats& out) {
+    switch (source) {
+    case DXGI_FORMAT_R8G8B8A8_TYPELESS:
+    case DXGI_FORMAT_R8G8B8A8_UNORM:
+    case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
+        out = { DXGI_FORMAT_R8G8B8A8_TYPELESS,
+                source == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB ? source : DXGI_FORMAT_R8G8B8A8_UNORM,
+                DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, false };
+        return true;
+    case DXGI_FORMAT_B8G8R8A8_TYPELESS:
+    case DXGI_FORMAT_B8G8R8A8_UNORM:
+    case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:
+        out = { DXGI_FORMAT_B8G8R8A8_TYPELESS,
+                source == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB ? source : DXGI_FORMAT_B8G8R8A8_UNORM,
+                DXGI_FORMAT_B8G8R8A8_UNORM_SRGB, false };
+        return true;
+    case DXGI_FORMAT_R10G10B10A2_TYPELESS:
+    case DXGI_FORMAT_R10G10B10A2_UNORM:
+        out = { DXGI_FORMAT_R10G10B10A2_TYPELESS, DXGI_FORMAT_R10G10B10A2_UNORM,
+                DXGI_FORMAT_UNKNOWN, false };
+        return true;
+    case DXGI_FORMAT_R16G16B16A16_TYPELESS:
+    case DXGI_FORMAT_R16G16B16A16_FLOAT:
+        out = { DXGI_FORMAT_R16G16B16A16_TYPELESS, DXGI_FORMAT_R16G16B16A16_FLOAT,
+                DXGI_FORMAT_UNKNOWN, true };
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool is_srgb_format(DXGI_FORMAT f) {
+    return f == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB || f == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
+}
+
+// Shared depth copies use the typeless family of the game's depth format plus
+// the SRV format that reads the depth channel as a float.
+static bool depth_formats(DXGI_FORMAT source, DXGI_FORMAT& texture_format,
+                          DXGI_FORMAT& srv_format) {
+    switch (source) {
+    case DXGI_FORMAT_D32_FLOAT:
+    case DXGI_FORMAT_R32_FLOAT:
+    case DXGI_FORMAT_R32_TYPELESS:
+        texture_format = DXGI_FORMAT_R32_TYPELESS;
+        srv_format = DXGI_FORMAT_R32_FLOAT;
+        return true;
+    case DXGI_FORMAT_D32_FLOAT_S8X24_UINT:
+    case DXGI_FORMAT_R32G8X24_TYPELESS:
+        texture_format = DXGI_FORMAT_R32G8X24_TYPELESS;
+        srv_format = DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS;
+        return true;
+    case DXGI_FORMAT_D24_UNORM_S8_UINT:
+    case DXGI_FORMAT_R24G8_TYPELESS:
+        texture_format = DXGI_FORMAT_R24G8_TYPELESS;
+        srv_format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+        return true;
+    case DXGI_FORMAT_D16_UNORM:
+    case DXGI_FORMAT_R16_TYPELESS:
+        texture_format = DXGI_FORMAT_R16_TYPELESS;
+        srv_format = DXGI_FORMAT_R16_UNORM;
+        return true;
+    default:
+        return false;
+    }
+}
+
+// Creates a keyed-mutex shared texture on the game device. KEYEDMUTEX alone
+// implies sharing; it must not be combined with D3D11_RESOURCE_MISC_SHARED.
+static bool create_shared_texture(ID3D11Device* device, u32 width, u32 height,
+                                  DXGI_FORMAT format, ID3D11Texture2D*& texture,
+                                  IDXGIKeyedMutex*& mutex, HANDLE& handle) {
+    D3D11_TEXTURE2D_DESC desc = {};
+    desc.Width = width;
+    desc.Height = height;
+    desc.MipLevels = 1;
+    desc.ArraySize = 1;
+    desc.Format = format;
+    desc.SampleDesc.Count = 1;
+    desc.Usage = D3D11_USAGE_DEFAULT;
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
+    if (FAILED(device->CreateTexture2D(&desc, nullptr, &texture))) return false;
+
+    IDXGIResource* dxgi = nullptr;
+    handle = nullptr;
+    if (SUCCEEDED(texture->QueryInterface(IID_PPV_ARGS(&dxgi)))) {
+        dxgi->GetSharedHandle(&handle);
+        dxgi->Release();
+    }
+    if (!handle || FAILED(texture->QueryInterface(IID_PPV_ARGS(&mutex)))) {
+        safe_release(mutex);
+        safe_release(texture);
+        handle = nullptr;
+        return false;
+    }
+    return true;
+}
+
+// Writer side of the protocol above.
+static bool write_shared(ID3D11DeviceContext* ctx, IDXGIKeyedMutex* mutex,
+                         ID3D11Texture2D* dst, ID3D11Texture2D* src,
+                         bool resolve, DXGI_FORMAT resolve_format) {
+    HRESULT hr = mutex->AcquireSync(1, 0);
+    if (!owns_key(hr)) hr = mutex->AcquireSync(0, 0);
+    if (!owns_key(hr)) return false;  // XR thread is copying it right now: drop
+    if (resolve) ctx->ResolveSubresource(dst, 0, src, 0, resolve_format);
+    else         ctx->CopyResource(dst, src);
+    mutex->ReleaseSync(1);
+    return true;
+}
 
 StereoRenderer& StereoRenderer::instance() {
     static StereoRenderer renderer;
@@ -14,582 +157,448 @@ StereoRenderer& StereoRenderer::instance() {
 
 bool StereoRenderer::initialize(GraphicsAPI api) {
     if (initialized_) return true;
-    api_ = api;
-
-    Log::info("Initializing StereoRenderer v2 (Phase 2)");
-
-    // Initialize Phase 2 subsystems
-    perf_.initialize();
-    latency_.initialize();
-
-    switch (api) {
-        case GraphicsAPI::D3D11:
-            if (!init_d3d11()) return false;
-            break;
-        case GraphicsAPI::D3D12:
-            if (!init_d3d12()) return false;
-            break;
-        default:
-            Log::error("Unsupported graphics API for stereo rendering");
-            return false;
+    if (api != GraphicsAPI::D3D11 && api != GraphicsAPI::D3D12) {
+        Log::error("StereoRenderer: unsupported graphics API {}", static_cast<int>(api));
+        return false;
     }
-
-    // Initialize OpenXR (instance + system, session deferred)
     if (!openxr_.initialize(api)) {
         Log::error("OpenXR initialization failed");
         return false;
     }
-
-    // Initialize depth reprojection
-    if (api == GraphicsAPI::D3D11 && d3d11_device_) {
-        if (!depth_.initialize(d3d11_device_)) {
-            Log::error("DepthReprojection::initialize failed — blit will be skipped");
-        }
-    }
-
-    camera_rig_.initialize(Config::instance().current_profile().ipd);
-
+    api_ = api;
     initialized_ = true;
-    Log::info("StereoRenderer Phase 2 initialized successfully");
+    Log::info("StereoRenderer initialized ({})",
+              api == GraphicsAPI::D3D11 ? "D3D11" : "D3D12 via D3D11On12");
     return true;
 }
 
 void StereoRenderer::shutdown() {
-    if (!initialized_) return;
-
-    depth_.shutdown();
-    latency_.shutdown();
-    perf_.shutdown();
-
-    if (api_ == GraphicsAPI::D3D12) {
-        if (d3d12_fence_event_) { CloseHandle(d3d12_fence_event_); d3d12_fence_event_ = nullptr; }
-        if (d3d12_fence_) { d3d12_fence_->Release(); d3d12_fence_ = nullptr; }
-        if (d3d12_cmd_list_) { d3d12_cmd_list_->Release(); d3d12_cmd_list_ = nullptr; }
-        if (d3d12_allocator_) { d3d12_allocator_->Release(); d3d12_allocator_ = nullptr; }
-        if (d3d11_on12_) { d3d11_on12_->Release(); d3d11_on12_ = nullptr; }
-    }
-
-    if (api_ == GraphicsAPI::D3D11) {
-        for (int i = 0; i < 2; i++) {
-            if (stereo_rtv_[i]) { stereo_rtv_[i]->Release(); stereo_rtv_[i] = nullptr; }
-            if (stereo_rt_[i]) { stereo_rt_[i]->Release(); stereo_rt_[i] = nullptr; }
-        }
-        if (game_frame_srv_) { game_frame_srv_->Release(); game_frame_srv_ = nullptr; }
-        if (game_frame_copy_) { game_frame_copy_->Release(); game_frame_copy_ = nullptr; }
-    }
-
+    // Joins the XR frame thread, which releases its XR-device resources
+    // (xr_release_resources) before exiting. Idempotent, so it is safe whether
+    // or not OpenXRContext::shutdown() already ran.
     openxr_.shutdown();
+    xr_release_resources();
+
+    std::lock_guard<std::mutex> lock(present_mutex_);
+    release_shared_surfaces();
+    safe_release(d3d11_on12_);
+    if (owns_d3d11_context_ && d3d11_ctx_) d3d11_ctx_->Release();
+    if (owns_d3d11_device_ && d3d11_device_) d3d11_device_->Release();
+    owns_d3d11_context_ = false;
+    owns_d3d11_device_ = false;
+    d3d11_device_ = nullptr;
+    d3d11_ctx_ = nullptr;
+    logged_mode_ = static_cast<RenderMode>(0xFF);
+
+    if (initialized_) Log::info("StereoRenderer shut down");
     initialized_ = false;
-    Log::info("StereoRenderer Phase 2 shut down");
+    api_ = GraphicsAPI::Unknown;
 }
 
-bool StereoRenderer::init_d3d11() {
-    Log::info("Init D3D11 stereo rendering (Phase 2)");
-    // Devices obtained from hook context via OpenXRContext::bind_d3d11_device()
-    return true;
+void StereoRenderer::set_d3d11_device(ID3D11Device* device, ID3D11DeviceContext* ctx) {
+    d3d11_device_ = device;
+    d3d11_ctx_ = ctx;
 }
 
-bool StereoRenderer::init_d3d12() {
-    Log::info("Init D3D12 stereo rendering (Phase 2)");
-
-    // Devices are bound later via OpenXRContext::bind_d3d12_device()
-    // Create command allocator and list when device becomes available
-    d3d12_device_ = OpenXRContext::instance().d3d12_device();
-    d3d12_queue_ = OpenXRContext::instance().d3d12_queue();
-
-    if (!d3d12_device_ || !d3d12_queue_) {
-        Log::info("D3D12 device/queue not yet bound, will init on first render");
-        return true;
+void StereoRenderer::release_shared_surfaces() {
+    std::lock_guard<std::mutex> lock(publish_mutex_);
+    for (SharedSurface* s : { &color_, &depth_ }) {
+        safe_release(s->mutex);
+        safe_release(s->texture);
+        *s = SharedSurface{};
     }
-
-    return init_d3d12_resources();
+    color_published_ = Published{};
+    depth_published_ = Published{};
+    color_generation_.fetch_add(1, std::memory_order_release);
+    depth_generation_.fetch_add(1, std::memory_order_release);
+    last_depth_frame_.store(0, std::memory_order_release);
 }
 
-bool StereoRenderer::init_d3d12_resources() {
-    if (d3d12_allocator_) return true;
-
-    if (FAILED(d3d12_device_->CreateCommandAllocator(
-            D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&d3d12_allocator_)))) {
-        Log::error("Failed to create D3D12 command allocator");
-        return false;
-    }
-
-    if (FAILED(d3d12_device_->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
-            d3d12_allocator_, nullptr, IID_PPV_ARGS(&d3d12_cmd_list_)))) {
-        Log::error("Failed to create D3D12 command list");
-        return false;
-    }
-    d3d12_cmd_list_->Close();
-
-    if (FAILED(d3d12_device_->CreateFence(0, D3D12_FENCE_FLAG_NONE,
-            IID_PPV_ARGS(&d3d12_fence_)))) {
-        Log::error("Failed to create D3D12 fence");
-        return false;
-    }
-    d3d12_fence_value_ = 0;
-
-    d3d12_fence_event_ = CreateEventA(nullptr, FALSE, FALSE, nullptr);
-    if (!d3d12_fence_event_) {
-        Log::error("Failed to create D3D12 fence event");
-        return false;
-    }
-
-    Log::info("D3D12 rendering resources initialized");
-    return true;
-}
-
-bool StereoRenderer::create_stereo_targets(u32 width, u32 height) {
-    if (!d3d11_device_) return false;
-
-    for (int i = 0; i < 2; i++) {
-        D3D11_TEXTURE2D_DESC desc = {};
-        desc.Width = width;
-        desc.Height = height;
-        desc.MipLevels = 1;
-        desc.ArraySize = 1;
-        desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-        desc.SampleDesc.Count = 1;
-        desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
-        desc.Usage = D3D11_USAGE_DEFAULT;
-
-        if (stereo_rt_[i]) { stereo_rt_[i]->Release(); stereo_rt_[i] = nullptr; }
-        if (FAILED(d3d11_device_->CreateTexture2D(&desc, nullptr, &stereo_rt_[i]))) {
-            Log::error("Failed to create stereo render target {}", i);
-            return false;
-        }
-
-        D3D11_RENDER_TARGET_VIEW_DESC rtv_desc = {};
-        rtv_desc.Format = desc.Format;
-        rtv_desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
-
-        if (stereo_rtv_[i]) { stereo_rtv_[i]->Release(); stereo_rtv_[i] = nullptr; }
-        if (FAILED(d3d11_device_->CreateRenderTargetView(
-                stereo_rt_[i], &rtv_desc, &stereo_rtv_[i]))) {
-            Log::error("Failed to create RTV for eye {}", i);
-            return false;
-        }
-    }
-
-    // Create game frame copy texture for reprojection
-    D3D11_TEXTURE2D_DESC copy_desc = {};
-    copy_desc.Width = width;
-    copy_desc.Height = height;
-    copy_desc.MipLevels = 1;
-    copy_desc.ArraySize = 1;
-    copy_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-    copy_desc.SampleDesc.Count = 1;
-    copy_desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-    copy_desc.Usage = D3D11_USAGE_DEFAULT;
-
-    if (game_frame_copy_) { game_frame_copy_->Release(); game_frame_copy_ = nullptr; }
-    if (FAILED(d3d11_device_->CreateTexture2D(&copy_desc, nullptr, &game_frame_copy_))) {
-        Log::error("Failed to create game frame copy texture");
-        return false;
-    }
-
-    D3D11_SHADER_RESOURCE_VIEW_DESC srv_desc = {};
-    srv_desc.Format = copy_desc.Format;
-    srv_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-    srv_desc.Texture2D.MipLevels = 1;
-
-    if (game_frame_srv_) { game_frame_srv_->Release(); game_frame_srv_ = nullptr; }
-    if (FAILED(d3d11_device_->CreateShaderResourceView(
-            game_frame_copy_, &srv_desc, &game_frame_srv_))) {
-        Log::error("Failed to create game frame SRV");
-        return false;
-    }
-
-    return true;
-}
-
-// ─── Frame Pipeline ─────────────────────────────────────────────────────────
+// ─── Present thread ─────────────────────────────────────────────────────────
 
 bool StereoRenderer::on_frame_present(const FrameCapture& capture) {
-    return render_frame(capture);
-}
-
-bool StereoRenderer::render_frame(const FrameCapture& capture) {
-    if (!initialized_) return false;
-
-    frame_count_++;
-    if (frame_count_.load() == 1) {
-        Log::info("First render_frame call");
-    }
-    u64 frame_idx = frame_count_.load();
-
-    // Poll F2 here so the overlay can be toggled even when the game window
-    // doesn't have keyboard focus (common while wearing the headset).
-    {
-        bool f2_now = (GetAsyncKeyState(VK_F2) & 0x8000) != 0;
-        if (f2_now && !f2_was_down_) {
-            ImGuiOverlay::instance().toggle_visible();
+    // The hook AddRefs the depth texture for this capture; release it exactly
+    // once on every path.
+    struct DepthReference {
+        void* texture;
+        ~DepthReference() {
+            if (texture) static_cast<ID3D11Texture2D*>(texture)->Release();
         }
-        f2_was_down_ = f2_now;
-    }
+    } depth_reference{ capture.depth_texture };
 
-    // Phase 2: Track pipeline latency
-    perf_.begin_frame(frame_idx);
-    latency_.begin_frame(frame_idx);
+    std::lock_guard<std::mutex> lock(present_mutex_);
+    if (!initialized_ || !capture.resource || !d3d11_device_ || !d3d11_ctx_) return false;
 
-    // Start OpenXR frame (waits for predicted display time)
-    if (!openxr_.begin_frame()) {
-        return false;
-    }
+    // PerfMonitor frame timing is driven once per Present by dllmain.
+    const u32 frame_index = frame_count_.fetch_add(1) + 1;
+    if (frame_index == 1) Log::info("First game frame received");
 
-    // Acquire eye views from OpenXR (head tracking data)
-    EyeViews eye_views;
-    if (!openxr_.acquire_eyes(eye_views)) {
-        Log::warn("Failed to acquire eye views");
-        return false;
-    }
-
-    // Phase 2: Feed tracking data to tracking system
-    tracking_.set_head_pose_from_openxr(
-        eye_views.left.position,
-        eye_views.left.rotation,
-        openxr_.predicted_display_time()
-    );
-
-    // Phase 2: Latency compensation - predict head pose at display time
-    tracking_.apply_latency_compensation(openxr_.predicted_display_time());
-
-    if (pre_render_) pre_render_();
-
-    // Render based on API
-    bool result = false;
-    switch (api_) {
-        case GraphicsAPI::D3D11:
-            result = render_d3d11(capture);
-            break;
-        case GraphicsAPI::D3D12:
-            result = render_d3d12(capture);
-            break;
-        default:
-            result = false;
-    }
-
-    perf_.end_cpu_work();
-
-    if (post_render_) post_render_();
-
-    // Phase 2: Apply asynchronous timewarp before submit
-    if (latency_.needs_timewarp()) {
-        apply_timewarp();
-    }
-
-    perf_.end_gpu_work();
-
-    // Submit frame to OpenXR
-    if (result) {
-        result = openxr_.submit_frame();
-    }
-
-    // Phase 2: End frame tracking
-    latency_.end_frame();
-    if (frame_idx % 60 == 0) {
-        Log::info("Frame {} rendered successfully", frame_idx);
-    }
-
-    perf_.end_frame();
-
-    // Update config with latest latency stats
-    Config::instance().latency_stats() = perf_.get_latency_stats();
-
-    return result;
-}
-
-// ─── D3D11 Render Paths ────────────────────────────────────────────────────
-
-bool StereoRenderer::render_d3d11(const FrameCapture& capture) {
-    if (depth_.depth_captured()) {
-        return render_d3d11_with_depth(capture);
-    }
-    return render_d3d11_blit(capture);
-}
-
-bool StereoRenderer::render_d3d11_with_depth(const FrameCapture& capture) {
-    if (!d3d11_device_ || !d3d11_ctx_) return false;
-
-    // Get camera rig eye views with head tracking applied
-    HeadPose head_pose = tracking_.get_head_pose();
-
-    // Build view setups for each eye using the camera rig
-    ViewSetup mono_setup;
-    // Use a real perspective instead of identity — identity causes z_near=0/0=NaN
-    // in mono_to_stereo_projections, producing white frames on every slider drag.
-    mono_setup.projection = Matrix4::perspective(
-        kPi / 2.0f, 16.0f / 9.0f, 0.01f, 1000.0f);
-
-    // Apply head tracking to the mono camera
-    ViewSetup tracked = camera_rig_.apply_head_tracking(mono_setup, head_pose);
-
-    // Compute stereo eye views from the tracked mono setup
-    EyeViews eye_views = camera_rig_.compute_eye_views(tracked);
-
-    // Remap game frame as SRV for the reprojection shaders
-    ID3D11ShaderResourceView* game_srv = nullptr;
-    if (capture.resource) {
-        D3D11_SHADER_RESOURCE_VIEW_DESC srv_desc = {};
-        srv_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-        srv_desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-        srv_desc.Texture2D.MipLevels = 1;
-        ID3D11Texture2D* tex = static_cast<ID3D11Texture2D*>(capture.resource);
-        if (SUCCEEDED(d3d11_device_->CreateShaderResourceView(tex, &srv_desc, &game_srv))) {
-            depth_.set_game_color_srv(game_srv);
-            game_srv->Release();
+    const ConfigProfile cfg = Config::instance().current_profile();
+    if (cfg.render_mode != logged_mode_) {
+        logged_mode_ = cfg.render_mode;
+        if (cfg.render_mode != RenderMode::Depth3D) {
+            Log::info("Render mode: Screen");
+        } else if (api_ == GraphicsAPI::D3D12) {
+            Log::warn("Render mode: Depth3D needs D3D11 depth capture; this D3D12 "
+                      "game is shown in Screen mode");
+        } else if (!cfg.volumetric_parallax) {
+            Log::info("Render mode: Depth3D selected but volumetric parallax is off; "
+                      "showing Screen mode");
+        } else {
+            Log::info("Render mode: Depth3D (Screen mode until a usable depth buffer "
+                      "is captured)");
         }
     }
 
-    // Use depth-aware reprojection (both eyes in one pass)
-    ReprojectionInput input{};
-    input.game_color_srv = game_srv;
-    input.linear_depth_srv = depth_.linear_depth_srv();
-    input.game_view_proj = eye_views.left.view_projection; // game's mono VP
-    input.eye_view_proj_left = eye_views.left.view_projection;
-    input.eye_view_proj_right = eye_views.right.view_projection;
-    input.eye_left = eye_views.left;
-    input.eye_right = eye_views.right;
-    input.eye_width = openxr_.eye_swapchain_width(0);
-    input.eye_height = openxr_.eye_swapchain_height(0);
-
-    // Acquire eye RTVs from OpenXR
-    for (int eye = 0; eye < 2; eye++) {
-        u32 image_index = 0;
-        if (!openxr_.begin_eye_image(eye, &image_index)) continue;
-        ID3D11RenderTargetView* rtv =
-            static_cast<ID3D11RenderTargetView*>(openxr_.eye_rtv(eye));
-        if (eye == 0) input.eye_rtv_left = rtv;
-        else input.eye_rtv_right = rtv;
-    }
-
-    if (input.eye_rtv_left && input.eye_rtv_right) {
-        depth_.reproject_to_eyes(input);
-    } else {
-        // Fallback: per-eye blit
-        ViewSetup identity_setup;
-        for (int eye = 0; eye < 2; eye++) {
-            ID3D11RenderTargetView* rtv = (eye == 0)
-                ? input.eye_rtv_left : input.eye_rtv_right;
-            if (rtv) {
-                depth_.blit_to_eye(capture, rtv, identity_setup,
-                    openxr_.eye_swapchain_width(eye),
-                    openxr_.eye_swapchain_height(eye));
+    bool captured = false;
+    if (openxr_.is_streaming()) {
+        if (api_ == GraphicsAPI::D3D12) {
+            captured = capture_d3d12(capture);
+        } else {
+            // Depth first, then colour: when the XR thread sees a new colour
+            // frame, the depth of the same Present is already published.
+            if (cfg.render_mode == RenderMode::Depth3D && cfg.volumetric_parallax &&
+                capture.depth_texture &&
+                capture_depth(static_cast<ID3D11Texture2D*>(capture.depth_texture))) {
+                last_depth_frame_.store(frame_index, std::memory_order_release);
             }
+            captured = capture_color(static_cast<ID3D11Texture2D*>(capture.resource));
         }
     }
 
-    // End eye images
-    for (int eye = 0; eye < 2; eye++) {
-        openxr_.end_eye_image(eye);
-    }
-
-    if (game_srv) game_srv->Release();
-
-    latency_.on_render_submit();
-    return true;
+    return captured;
 }
 
-bool StereoRenderer::render_d3d11_blit(const FrameCapture& capture) {
-    if (!d3d11_device_ || !d3d11_ctx_) {
-        Log::error("render_d3d11_blit: device or ctx null");
+bool StereoRenderer::capture_color(ID3D11Texture2D* source) {
+    D3D11_TEXTURE2D_DESC sd = {};
+    source->GetDesc(&sd);
+
+    ColorFormats formats;
+    if (!color_formats(sd.Format, formats)) {
+        static bool warned = false;
+        if (!warned) {
+            warned = true;
+            Log::error("Unsupported backbuffer format {}; VR output disabled",
+                       static_cast<u32>(sd.Format));
+        }
         return false;
     }
 
-    // The game backbuffer has only D3D11_BIND_RENDER_TARGET — CreateShaderResourceView
-    // on it directly will always fail. CopyResource it into a SHADER_RESOURCE texture
-    // we own, then create the SRV from that copy.
-    if (capture.resource) {
-        ID3D11Texture2D* backbuffer = static_cast<ID3D11Texture2D*>(capture.resource);
-        D3D11_TEXTURE2D_DESC bb;
-        backbuffer->GetDesc(&bb);
+    const bool changed = color_.source_format != sd.Format ||
+                         color_.width != sd.Width || color_.height != sd.Height;
+    if (changed) {
+        std::lock_guard<std::mutex> lock(publish_mutex_);
+        safe_release(color_.mutex);
+        safe_release(color_.texture);
+        color_ = SharedSurface{};
+        color_.source_format = sd.Format;
+        color_.resolve_format = formats.typed;
+        color_.width = sd.Width;
+        color_.height = sd.Height;
 
-        // Resolve typeless formats to a concrete typed view
-        DXGI_FORMAT srv_fmt = bb.Format;
-        if (srv_fmt == DXGI_FORMAT_R8G8B8A8_TYPELESS)    srv_fmt = DXGI_FORMAT_R8G8B8A8_UNORM;
-        if (srv_fmt == DXGI_FORMAT_B8G8R8A8_TYPELESS)    srv_fmt = DXGI_FORMAT_B8G8R8A8_UNORM;
-        if (srv_fmt == DXGI_FORMAT_R10G10B10A2_TYPELESS)  srv_fmt = DXGI_FORMAT_R10G10B10A2_UNORM;
-
-        // Recreate copy texture when format or dimensions change
-        bool need_new = !game_frame_copy_;
-        if (game_frame_copy_) {
-            D3D11_TEXTURE2D_DESC cur;
-            game_frame_copy_->GetDesc(&cur);
-            need_new = cur.Format != srv_fmt || cur.Width != bb.Width || cur.Height != bb.Height;
+        HANDLE handle = nullptr;
+        Published pub;
+        if (create_shared_texture(d3d11_device_, sd.Width, sd.Height, formats.typeless,
+                                  color_.texture, color_.mutex, handle)) {
+            pub.srv_format = formats.srgb_view != DXGI_FORMAT_UNKNOWN ? formats.srgb_view
+                                                                     : formats.typed;
+            pub.decode_srgb = formats.srgb_view == DXGI_FORMAT_UNKNOWN && !formats.linear;
+        } else if (create_shared_texture(d3d11_device_, sd.Width, sd.Height, formats.typed,
+                                         color_.texture, color_.mutex, handle)) {
+            // Some drivers refuse typeless shared textures; read the typed
+            // copy and decode in the shader instead.
+            pub.srv_format = formats.typed;
+            pub.decode_srgb = !is_srgb_format(formats.typed) && !formats.linear;
+        } else {
+            Log::error("Failed to create the shared game-frame texture ({}x{}, format {})",
+                       sd.Width, sd.Height, static_cast<u32>(sd.Format));
         }
-
-        if (need_new) {
-            if (game_frame_srv_)  { game_frame_srv_->Release();  game_frame_srv_  = nullptr; }
-            if (game_frame_copy_) { game_frame_copy_->Release(); game_frame_copy_ = nullptr; }
-
-            D3D11_TEXTURE2D_DESC copy_desc = {};
-            copy_desc.Width           = bb.Width;
-            copy_desc.Height          = bb.Height;
-            copy_desc.MipLevels       = 1;
-            copy_desc.ArraySize       = 1;
-            copy_desc.Format          = srv_fmt;
-            copy_desc.SampleDesc      = { 1, 0 };
-            copy_desc.BindFlags       = D3D11_BIND_SHADER_RESOURCE;
-            copy_desc.Usage           = D3D11_USAGE_DEFAULT;
-
-            if (FAILED(d3d11_device_->CreateTexture2D(&copy_desc, nullptr, &game_frame_copy_))) {
-                Log::error("Failed to create backbuffer copy texture (fmt={})", static_cast<u32>(srv_fmt));
-            } else {
-                D3D11_SHADER_RESOURCE_VIEW_DESC srv_desc = {};
-                srv_desc.Format                    = srv_fmt;
-                srv_desc.ViewDimension             = D3D11_SRV_DIMENSION_TEXTURE2D;
-                srv_desc.Texture2D.MipLevels       = 1;
-                if (FAILED(d3d11_device_->CreateShaderResourceView(
-                        game_frame_copy_, &srv_desc, &game_frame_srv_))) {
-                    Log::error("Failed to create SRV for copy texture (fmt={})", static_cast<u32>(srv_fmt));
-                    game_frame_copy_->Release();
-                    game_frame_copy_ = nullptr;
-                } else {
-                    depth_.set_game_color_srv(game_frame_srv_);
-                    Log::info("Backbuffer copy SRV ready: fmt={} {}x{}",
-                              static_cast<u32>(srv_fmt), bb.Width, bb.Height);
-                }
-            }
-        }
-
-        // Copy backbuffer contents into our SRV-capable texture
-        if (game_frame_copy_) {
-            if (bb.SampleDesc.Count > 1)
-                d3d11_ctx_->ResolveSubresource(game_frame_copy_, 0, backbuffer, 0, srv_fmt);
-            else
-                d3d11_ctx_->CopyResource(game_frame_copy_, backbuffer);
+        pub.handle = handle;
+        color_published_ = pub;
+        color_generation_.fetch_add(1, std::memory_order_release);
+        if (pub.handle) {
+            Log::info("Shared game frame: {}x{} format {} (view {}, shader sRGB decode {})",
+                      sd.Width, sd.Height, static_cast<u32>(sd.Format),
+                      static_cast<u32>(pub.srv_format), pub.decode_srgb ? "on" : "off");
         }
     }
+    if (!color_.texture) return false;
 
-    // Save the game's active render target before begin_eye_image overrides it.
-    // After all eye blits we restore it so the game's next frame renders to its
-    // own backbuffer and not to the VR eye swapchain texture.
-    ID3D11RenderTargetView* game_rtv = nullptr;
-    ID3D11DepthStencilView* game_dsv = nullptr;
-    d3d11_ctx_->OMGetRenderTargets(1, &game_rtv, &game_dsv);
-
-    // Simple blit path when depth isn't available
-    for (int eye = 0; eye < 2; eye++) {
-        u32 image_index = 0;
-        if (!openxr_.begin_eye_image(eye, &image_index))
-            continue;
-
-        u32 eye_w = openxr_.eye_swapchain_width(eye);
-        u32 eye_h = openxr_.eye_swapchain_height(eye);
-
-        ID3D11RenderTargetView* rtv =
-            static_cast<ID3D11RenderTargetView*>(openxr_.eye_rtv(eye));
-
-        ViewSetup identity_setup;
-        if (rtv) {
-            depth_.blit_to_eye(capture, rtv, identity_setup, eye_w, eye_h);
-        }
-
-        openxr_.end_eye_image(eye);
-    }
-
-    // Restore the game's render target so its next frame goes to its own backbuffer.
-    d3d11_ctx_->OMSetRenderTargets(1, &game_rtv, game_dsv);
-    if (game_rtv) game_rtv->Release();
-    if (game_dsv) game_dsv->Release();
-
-    latency_.on_render_submit();
-    return true;
+    return write_shared(d3d11_ctx_, color_.mutex, color_.texture, source,
+                        sd.SampleDesc.Count > 1, color_.resolve_format);
 }
 
-bool StereoRenderer::render_d3d12(const FrameCapture& capture) {
-    if (!d3d12_device_) return false;
-    if (!d3d11_on12_ || !d3d11_ctx_) {
-        Log::error("render_d3d12: D3D11On12 device not available");
+bool StereoRenderer::capture_depth(ID3D11Texture2D* depth) {
+    D3D11_TEXTURE2D_DESC dd = {};
+    depth->GetDesc(&dd);
+
+    DXGI_FORMAT texture_format = DXGI_FORMAT_UNKNOWN;
+    DXGI_FORMAT srv_format = DXGI_FORMAT_UNKNOWN;
+    if (dd.SampleDesc.Count != 1 || !depth_formats(dd.Format, texture_format, srv_format)) {
+        static bool warned = false;
+        if (!warned) {
+            warned = true;
+            Log::warn("Depth3D: game depth buffer not usable (format {}, {} samples); "
+                      "showing Screen mode", static_cast<u32>(dd.Format),
+                      dd.SampleDesc.Count);
+        }
         return false;
     }
 
-    ID3D12Resource* game_backbuffer = static_cast<ID3D12Resource*>(capture.resource);
-    if (!game_backbuffer) {
-        for (int eye = 0; eye < 2; eye++) {
-            openxr_.begin_eye_image(eye);
-            openxr_.end_eye_image(eye);
+    const bool changed = depth_.source_format != dd.Format ||
+                         depth_.width != dd.Width || depth_.height != dd.Height;
+    if (changed) {
+        std::lock_guard<std::mutex> lock(publish_mutex_);
+        safe_release(depth_.mutex);
+        safe_release(depth_.texture);
+        depth_ = SharedSurface{};
+        depth_.source_format = dd.Format;
+        depth_.width = dd.Width;
+        depth_.height = dd.Height;
+
+        HANDLE handle = nullptr;
+        Published pub;
+        if (create_shared_texture(d3d11_device_, dd.Width, dd.Height, texture_format,
+                                  depth_.texture, depth_.mutex, handle)) {
+            pub.handle = handle;
+            pub.srv_format = srv_format;
+            Log::info("Shared depth buffer: {}x{} format {}", dd.Width, dd.Height,
+                      static_cast<u32>(dd.Format));
+        } else {
+            Log::warn("Depth3D: failed to create the shared depth texture ({}x{}, format {})",
+                      dd.Width, dd.Height, static_cast<u32>(dd.Format));
         }
-        return true;
+        depth_published_ = pub;
+        depth_generation_.fetch_add(1, std::memory_order_release);
+    }
+    if (!depth_.texture) return false;
+
+    // Some drivers mis-handle copying a depth texture that is still bound as
+    // the DSV, so unbind it for the copy (only if it is this texture).
+    ID3D11RenderTargetView* rtvs[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
+    ID3D11DepthStencilView* dsv = nullptr;
+    d3d11_ctx_->OMGetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, rtvs, &dsv);
+    bool unbound = false;
+    if (dsv) {
+        ID3D11Resource* bound = nullptr;
+        dsv->GetResource(&bound);
+        if (bound == depth) {
+            d3d11_ctx_->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, rtvs, nullptr);
+            unbound = true;
+        }
+        safe_release(bound);
     }
 
-    // Wrap game D3D12 backbuffer as ID3D11Resource via D3D11On12 interop.
-    // This lets us use D3D11 CopyResource which D3D11On12 translates to
-    // D3D12 CopyResource on the game's own command queue.
-    ID3D11Resource* wrapped_bb = nullptr;
-    D3D11_RESOURCE_FLAGS bb_flags = {};
-    bb_flags.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    const bool written = write_shared(d3d11_ctx_, depth_.mutex, depth_.texture, depth,
+                                      false, DXGI_FORMAT_UNKNOWN);
 
-    HRESULT hr = d3d11_on12_->CreateWrappedResource(
-        game_backbuffer, &bb_flags,
-        D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_PRESENT,
-        IID_PPV_ARGS(&wrapped_bb));
-    if (FAILED(hr) || !wrapped_bb) {
-        Log::error("CreateWrappedResource failed: {:08x}", hr);
+    if (unbound) d3d11_ctx_->OMSetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, rtvs, dsv);
+    for (auto*& rtv : rtvs) safe_release(rtv);
+    safe_release(dsv);
+    return written;
+}
+
+bool StereoRenderer::capture_d3d12(const FrameCapture& capture) {
+    if (!d3d11_on12_) {
+        static bool warned = false;
+        if (!warned) {
+            warned = true;
+            Log::error("D3D12 capture: no D3D11On12 device");
+        }
         return false;
     }
 
-    // Acquire wrapped resource for D3D11 usage (syncs with game queue via fence)
-    d3d11_on12_->AcquireWrappedResources(&wrapped_bb, 1);
-
-    // Copy wrapped backbuffer to each eye swapchain texture
-    for (int eye = 0; eye < 2; eye++) {
-        u32 img_idx = 0;
-        if (!openxr_.begin_eye_image(eye, &img_idx)) continue;
-
-        ID3D11Texture2D* eye_tex = static_cast<ID3D11Texture2D*>(
-            openxr_.eye_swapchain_image(eye, img_idx));
-        if (eye_tex) {
-            d3d11_ctx_->CopyResource(eye_tex, wrapped_bb);
+    auto* backbuffer = static_cast<ID3D12Resource*>(capture.resource);
+    ID3D11Resource* wrapped = nullptr;
+    D3D11_RESOURCE_FLAGS flags = {};
+    flags.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+    const HRESULT hr = d3d11_on12_->CreateWrappedResource(
+        backbuffer, &flags, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_PRESENT,
+        IID_PPV_ARGS(&wrapped));
+    if (FAILED(hr) || !wrapped) {
+        static u32 failures = 0;
+        if (++failures <= 5 || failures % 600 == 0) {
+            Log::error("D3D12 capture: CreateWrappedResource failed 0x{:08x} (count={})",
+                       static_cast<u32>(hr), failures);
         }
-
-        openxr_.end_eye_image(eye);
+        safe_release(wrapped);
+        return false;
+    }
+    ID3D11Texture2D* texture = nullptr;
+    if (FAILED(wrapped->QueryInterface(IID_PPV_ARGS(&texture)))) {
+        wrapped->Release();
+        return false;
     }
 
-    // Flush D3D11 commands — D3D11On12 translates them to D3D12 on the game queue
+    d3d11_on12_->AcquireWrappedResources(&wrapped, 1);
+    const bool captured = capture_color(texture);
+    // ReleaseWrappedResources records the transition back to PRESENT; it must
+    // precede Flush, which submits it. All wrapper references are dropped
+    // before the Flush so 11On12 can destroy the per-frame wrapper right away.
+    d3d11_on12_->ReleaseWrappedResources(&wrapped, 1);
+    texture->Release();
+    wrapped->Release();
     d3d11_ctx_->Flush();
+    return captured;
+}
 
-    // Release wrapped resource back to D3D12
-    d3d11_on12_->ReleaseWrappedResources(&wrapped_bb, 1);
-    wrapped_bb->Release();
+// ─── XR frame thread ────────────────────────────────────────────────────────
 
-    latency_.on_render_submit();
+static void release_xr_surface(ID3D11ShaderResourceView*& srv, ID3D11Texture2D*& local,
+                               IDXGIKeyedMutex*& mutex, ID3D11Texture2D*& shared) {
+    safe_release(srv);
+    safe_release(local);
+    safe_release(mutex);
+    safe_release(shared);
+}
+
+void StereoRenderer::xr_refresh(XrSurface& s, const Published& published,
+                                const std::atomic<u64>& generation, const char* what) {
+    if (generation.load(std::memory_order_acquire) == s.generation) return;
+    if (s.retry_delay > 0) {
+        --s.retry_delay;
+        return;
+    }
+    release_xr_surface(s.srv, s.local, s.mutex, s.shared);
+    s.has_content = false;
+    s.width = s.height = 0;
+
+    // Hold the publish lock while opening so the Present thread cannot release
+    // the texture behind this handle in the meantime. No GPU wait happens here.
+    std::lock_guard<std::mutex> lock(publish_mutex_);
+    const u64 current = generation.load(std::memory_order_acquire);
+    if (!published.handle) {
+        s.generation = current;  // nothing to open until the next publication
+        return;
+    }
+
+    bool ok = SUCCEEDED(xr_device_->OpenSharedResource(published.handle,
+                                                       IID_PPV_ARGS(&s.shared))) &&
+              SUCCEEDED(s.shared->QueryInterface(IID_PPV_ARGS(&s.mutex)));
+    D3D11_TEXTURE2D_DESC desc = {};
+    if (ok) {
+        s.shared->GetDesc(&desc);
+        desc.MiscFlags = 0;
+        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        desc.Usage = D3D11_USAGE_DEFAULT;
+        desc.CPUAccessFlags = 0;
+        ok = SUCCEEDED(xr_device_->CreateTexture2D(&desc, nullptr, &s.local));
+    }
+    if (ok) {
+        D3D11_SHADER_RESOURCE_VIEW_DESC srv = {};
+        srv.Format = published.srv_format;
+        srv.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+        srv.Texture2D.MipLevels = 1;
+        ok = SUCCEEDED(xr_device_->CreateShaderResourceView(s.local, &srv, &s.srv));
+    }
+    if (!ok) {
+        release_xr_surface(s.srv, s.local, s.mutex, s.shared);
+        s.retry_delay = 90;  // about one second at 90 Hz
+        static u32 failures = 0;
+        if (++failures <= 5 || failures % 100 == 0) {
+            Log::error("XR thread failed to open the shared {} (count={})", what, failures);
+        }
+        return;
+    }
+    s.width = desc.Width;
+    s.height = desc.Height;
+    s.decode_srgb = published.decode_srgb;
+    s.generation = current;
+    Log::info("XR thread opened shared {} ({}x{})", what, desc.Width, desc.Height);
+}
+
+bool StereoRenderer::xr_pull(XrSurface& s) {
+    if (!s.mutex || !s.local) return false;
+    if (!owns_key(s.mutex->AcquireSync(1, 0))) return false;  // nothing new
+    xr_ctx_->CopyResource(s.local, s.shared);
+    s.mutex->ReleaseSync(0);
+    s.has_content = true;
     return true;
 }
 
-bool StereoRenderer::copy_frame_to_eyes(const FrameCapture& capture) {
-    return true;
+StereoRenderer::XrSource StereoRenderer::xr_update_source(ID3D11Device* xr_device,
+                                                          ID3D11DeviceContext* xr_ctx) {
+    XrSource out;
+    if (!xr_device || !xr_ctx) return out;
+    if (xr_device_ != xr_device) {
+        xr_release_resources();
+        xr_device_ = xr_device;
+        xr_ctx_ = xr_ctx;
+    }
+    if (!xr_draw_.is_initialized()) {
+        if (xr_draw_failed_) return out;
+        if (!xr_draw_.initialize(xr_device_)) {
+            xr_draw_failed_ = true;
+            Log::error("XR draw pipeline unavailable; nothing will be shown in the headset");
+            return out;
+        }
+    }
+
+    xr_refresh(xr_color_, color_published_, color_generation_, "game frame");
+    if (xr_pull(xr_color_)) ++xr_color_frames_;
+
+    const u32 last_depth = last_depth_frame_.load(std::memory_order_acquire);
+    const bool depth_current =
+        last_depth != 0 && frame_count_.load() - last_depth <= kDepthStaleFrames;
+    if (depth_current) {
+        xr_refresh(xr_depth_, depth_published_, depth_generation_, "depth buffer");
+        xr_pull(xr_depth_);
+    }
+
+    out.has_color = xr_color_.srv && xr_color_.has_content;
+    out.width = xr_color_.width;
+    out.height = xr_color_.height;
+    out.color_generation = xr_color_frames_;
+    out.has_depth = depth_current && xr_depth_.srv && xr_depth_.has_content;
+    return out;
 }
 
-// ─── Phase 2: ATW ──────────────────────────────────────────────────────────
-
-void StereoRenderer::set_latency_compensation_enabled(bool v) {
-    latency_.set_motion_smoothing(v);
-    camera_rig_.set_latency_compensation_enabled(v);
+void StereoRenderer::xr_draw_screen(ID3D11RenderTargetView* rtv, u32 width, u32 height) {
+    if (!xr_ctx_) return;
+    xr_draw_.draw_screen(xr_ctx_, { xr_color_.srv, xr_color_.decode_srgb }, rtv,
+                         width, height);
 }
 
-bool StereoRenderer::latency_compensation_enabled() const {
-    return camera_rig_.latency_compensation_enabled();
+void StereoRenderer::xr_draw_depth3d_eye(int eye, const XrView (&views)[2],
+                                         const ConfigProfile& cfg,
+                                         ID3D11RenderTargetView* rtv,
+                                         u32 width, u32 height) {
+    if (!xr_ctx_ || !xr_color_.srv || !xr_depth_.srv || eye < 0 || eye > 1) return;
+
+    const f32 aspect = static_cast<f32>(xr_color_.width) /
+                       static_cast<f32>(std::max(xr_color_.height, 1u));
+    const reproj::GameCamera camera = reproj::make_game_camera(
+        cfg.depth_fov_degrees, aspect, cfg.depth_near_plane, cfg.depth_far_plane,
+        cfg.depth_reversed_z);
+
+    // Orientation and FOV are exactly those submitted for this eye. swap_eyes
+    // exchanges only the viewpoint, so each eye sees the other eye's parallax.
+    const int content_eye = cfg.swap_eyes ? 1 - eye : eye;
+    const XrVector3f& p = views[content_eye].pose.position;
+    const XrQuaternionf& q = views[eye].pose.orientation;
+    const XrFovf& fov = views[eye].fov;
+    const reproj::EyeView view = reproj::make_eye_view(
+        reproj::content_eye_position({ p.x, p.y, p.z }, cfg.parallax_strength,
+                                     cfg.world_scale),
+        Quat(q.x, q.y, q.z, q.w), fov.angleLeft, fov.angleRight, fov.angleUp,
+        fov.angleDown);
+
+    // Tint by the eye the image is rendered FOR (after swap_eyes).
+    const i32 tint = cfg.show_eye_debug ? (eye == 0 ? 1 : 2) : 0;
+    xr_draw_.draw_depth3d(xr_ctx_, { xr_color_.srv, xr_color_.decode_srgb },
+                          xr_depth_.srv, view, camera, tint, rtv, width, height);
 }
 
-bool StereoRenderer::apply_timewarp() {
-    if (!openxr_.is_initialized()) return false;
-
-    // Get the latest head pose (very recent, after rendering finished)
-    HeadPose latest_pose = tracking_.get_head_pose();
-
-    // Store ATW data for the next frame submit
-    LatencyCompensator::TimewarpData tw_data;
-    tw_data.hmd_position = latest_pose.position;
-    tw_data.hmd_rotation = latest_pose.rotation;
-    tw_data.timestamp_ms = static_cast<f64>(
-        std::chrono::duration_cast<std::chrono::microseconds>(
-            std::chrono::steady_clock::now().time_since_epoch()).count()) / 1000.0;
-    tw_data.valid = true;
-
-    latency_.set_timewarp_data(tw_data);
-    latency_.update_latest_pose_for_atw(latest_pose);
-
-    return true;
+void StereoRenderer::xr_release_resources() {
+    for (XrSurface* s : { &xr_color_, &xr_depth_ }) {
+        release_xr_surface(s->srv, s->local, s->mutex, s->shared);
+        *s = XrSurface{};
+    }
+    xr_draw_.shutdown();
+    xr_draw_failed_ = false;
+    xr_color_frames_ = 0;
+    xr_device_ = nullptr;
+    xr_ctx_ = nullptr;
 }
 
 } // namespace vrc

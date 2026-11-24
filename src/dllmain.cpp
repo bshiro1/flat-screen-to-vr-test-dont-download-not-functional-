@@ -3,28 +3,43 @@
 #include "core/types.h"
 #include "core/perf_monitor.h"
 #include "hook/hook_manager.h"
-#include "hook/dx11_hook.h"
-#include "hook/dx12_hook.h"
 #include "render/stereo_renderer.h"
-#include "render/latency_compensator.h"
-#include "render/depth_reprojection.h"
 #include "vr/openxr_context.h"
 #include "vr/tracking.h"
 #include "overlay/imgui_overlay.h"
-#include "overlay/config_editor.h"
 #include "input/input_proxy.h"
 #include "input/input_mapper.h"
+#include "input/xr_shared_state.h"
 
 #include <windows.h>
+#include <d3d11.h>
 #include <d3d11on12.h>
-#include <cstdlib>
-#include <filesystem>
-#include <atomic>
+#include <dxgi1_4.h>
+#include <algorithm>
+#include <chrono>
 #include <mutex>
 
 namespace vrc {
 
-// ─── Global Bootstrap ───────────────────────────────────────────────────────
+namespace {
+
+// Binding the game device to OpenXR is retried a few times, spaced out, in
+// case the first attempt hits a transient failure; then it gives up.
+constexpr u32 kMaxBindAttempts = 3;
+constexpr u32 kFramesBetweenBindAttempts = 120;
+constexpr auto kInputPollInterval = std::chrono::milliseconds(16);
+
+const char* api_name(GraphicsAPI api) {
+    switch (api) {
+        case GraphicsAPI::D3D11: return "D3D11";
+        case GraphicsAPI::D3D12: return "D3D12";
+        case GraphicsAPI::OpenGL: return "OpenGL";
+        case GraphicsAPI::Vulkan: return "Vulkan";
+        default: return "unknown";
+    }
+}
+
+} // namespace
 
 class VRConverter {
 public:
@@ -33,335 +48,384 @@ public:
         return conv;
     }
 
-    bool initialize() {
-        if (initialized_.load(std::memory_order_acquire)) return true;
+    // start() and stop() are serialized by mutex_ and are idempotent.
+    bool start() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (state_ == State::Running) return true;
 
-        auto log_path = Config::instance().log_path();
-        Log::init(log_path, LogLevel::Debug);
-        Log::info("=== VR Game Converter v{} (Phase 2) ===", "0.2.0");
+        Log::init(Config::instance().log_path(), LogLevel::Debug);
+        Log::info("=== VR Game Converter v{} ===", "0.2.0");
+        Config::instance().load(Config::instance().config_dir() / "config.json");
 
-        auto config_path = Config::instance().config_dir() / "config.json";
-        Config::instance().load(config_path);
+        const auto profile = Config::instance().current_profile_copy();
+        const bool use_bridge = profile.injection_method == InjectionMethod::SixDofBridge;
+        Log::info("Injection method: {} (legacy actions {})",
+                  use_bridge ? "6DoF Bridge" : "Legacy SendInput",
+                  (!use_bridge || profile.bridge_send_legacy_input) ? "enabled" : "disabled");
+        if (use_bridge) {
+            XRStateBridge::instance().initialize(
+                profile.bridge_name, static_cast<u32>(profile.injection_method));
+        } else {
+            XRStateBridge::instance().shutdown();
+        }
 
-        // Initialize Phase 2 subsystems early
         PerfMonitor::instance().initialize();
-        LatencyCompensator::instance().initialize();
 
-        // Initialize input
         InputProxy::instance().initialize();
-        InputMapper::instance().load_profile("default_vr");
+        const std::string input_profile =
+            profile.input_profile.empty() ? "default_vr" : profile.input_profile;
+        if (!InputMapper::instance().load_profile(input_profile)) {
+            Log::warn("Input profile '{}' not found, falling back to default_vr", input_profile);
+            InputMapper::instance().load_profile("default_vr");
+        }
 
-        // Initialize hooking framework
+        reset_present_state();
+
+        // The callbacks must be set before the hooks can call them.
         auto& hooks = HookManager::instance();
         hooks.initialize();
+        hooks.set_on_present([this](HookContext& ctx) { return on_game_present(ctx); });
+        hooks.set_on_frame([this](const FrameCapture& capture) { on_frame_capture(capture); });
+        const bool hooked = hooks.install_hooks();
 
-        auto api = hooks.detected_api();
-        if (api == GraphicsAPI::Unknown) {
-            Log::warn("No supported graphics API detected yet — installing D3D11+D3D12 hooks speculatively");
-        }
-
-        // Always install both D3D11 and D3D12 hooks:
-        //   - D3D11 hook uses global Present vtable patching (works even if d3d11.dll isn't loaded yet)
-        //   - D3D12 hook starts a deferred thread that polls for d3d12.dll to load
-        // UE4 games load D3D11 early but may use D3D12 later — we need both.
-        if (hooks.hook_present(GraphicsAPI::D3D11)) {
-            Log::info("Present hook installed for D3D11");
-        }
-        if (hooks.hook_present(GraphicsAPI::D3D12)) {
-            Log::info("Present hook installed for D3D12");
-        }
-        if (api != GraphicsAPI::D3D11 && api != GraphicsAPI::D3D12 && api != GraphicsAPI::Unknown) {
-            if (hooks.hook_present(api)) {
-                Log::info("Present hook installed for API {}", static_cast<int>(api));
-            } else {
-                Log::error("Failed to install Present hook for API {}", static_cast<int>(api));
-            }
-        }
-
-        // Set up present callback — main rendering loop
-        hooks.set_on_present([this](HookContext& ctx) -> bool {
-            return on_game_present(ctx);
-        });
-
-        // Set up frame capture callback — stereo rendering + depth
-        hooks.set_on_frame([this](const FrameCapture& capture) {
-            on_frame_capture(capture);
-        });
-
-        initialized_ = true;
-        Log::info("VR Game Converter Phase 2 initialized");
-        return true;
+        // Running even when hooking failed, so stop() still tears down what
+        // was started above.
+        state_ = State::Running;
+        Log::info(hooked ? "VR Game Converter started"
+                         : "VR Game Converter started without a Present hook");
+        return hooked;
     }
 
-    void shutdown() {
-        Log::info("Shutting down VR Game Converter Phase 2");
+    void stop() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (state_ == State::Stopped) return;
+        Log::info("Stopping VR Game Converter");
 
+        // Unhook first and wait for the detours to leave, so no Present
+        // callback runs while the subsystems below are torn down.
+        HookManager::instance().shutdown();
+        // Joins the XR frame thread, which renders with StereoRenderer's
+        // resources; the renderer must outlive it.
+        OpenXRContext::instance().shutdown();
         StereoRenderer::instance().shutdown();
         ImGuiOverlay::instance().shutdown();
         TrackingSystem::instance().shutdown();
-        HookManager::instance().shutdown();
+        // Release injected keys while InputProxy can still send the key-ups.
+        InputMapper::instance().release_all_held();
         InputProxy::instance().shutdown();
+        XRStateBridge::instance().shutdown();
         PerfMonitor::instance().shutdown();
-        LatencyCompensator::instance().shutdown();
 
         Config::instance().save(Config::instance().config_dir() / "config.json");
+        Log::info("VR Game Converter stopped");
         Log::shutdown();
+
+        reset_present_state();
+        state_ = State::Stopped;
     }
 
+private:
+    VRConverter() = default;
+
+    enum class State { Stopped, Running };
+    enum class PipelineState { Pending, Ready, Failed };
+    enum class BindState { Pending, Bound, Failed };
+
+    // ─── Present thread ──────────────────────────────────────────────────
+    // The hook serializes these callbacks. stop() resets their state only
+    // after the hooks have drained, so they need no lock.
+
     bool on_game_present(HookContext& ctx) {
-        if (!stereo_initialized_.load(std::memory_order_relaxed) && !init_failed_.load(std::memory_order_relaxed)) {
-            if (!initialize_vr_pipeline(ctx)) {
-                init_failed_.store(true, std::memory_order_release);
-                return true;
-            }
-            stereo_initialized_.store(true, std::memory_order_release);
+        if (ctx.api != present_api_) {
+            present_api_ = ctx.api;
+            Config::instance().set_detected_api(ctx.api);
+            Log::info("Game presents with {}", api_name(ctx.api));
         }
 
-        // Phase 2: Bind real D3D device to OpenXR if not yet bound
-        if (!OpenXRContext::instance().is_device_bound()) {
-            if (ctx.api == GraphicsAPI::D3D11 && ctx.device) {
-                ID3D11Device* d3d11 = static_cast<ID3D11Device*>(ctx.device);
-                ID3D11DeviceContext* d3d11_ctx = nullptr;
-                d3d11->GetImmediateContext(&d3d11_ctx);
-                OpenXRContext::instance().bind_d3d11_device(d3d11, d3d11_ctx);
-                Log::info("Bound D3D11 device to OpenXR");
-            } else if (ctx.api == GraphicsAPI::D3D12 && ctx.device) {
-                ID3D12Device* d3d12 = static_cast<ID3D12Device*>(ctx.device);
-                ID3D12CommandQueue* queue = static_cast<ID3D12CommandQueue*>(ctx.command_queue);
-                if (!queue) { queue = D3D12Hook::instance().command_queue(); }
-                if (d3d12 && queue) {
-                    // Create D3D11On12 device wrapping the game's D3D12 device + queue.
-                    // This allows us to use D3D11 OpenXR binding (which works on all
-                    // runtimes) while operating on the game's D3D12 resources.
-                    ID3D11Device* d3d11_dev = nullptr;
-                    ID3D11DeviceContext* d3d11_on12_ctx = nullptr;
-                    IUnknown* q[] = { queue };
-                    HRESULT hr = D3D11On12CreateDevice(
-                        d3d12, D3D11_CREATE_DEVICE_BGRA_SUPPORT,
-                        nullptr, 0, q, 1, 0,
-                        &d3d11_dev, &d3d11_on12_ctx, nullptr);
-                    if (SUCCEEDED(hr) && d3d11_dev && d3d11_on12_ctx) {
-                        ID3D11On12Device* d3d11_on12 = nullptr;
-                        if (SUCCEEDED(d3d11_dev->QueryInterface(IID_PPV_ARGS(&d3d11_on12)))) {
-                            StereoRenderer::instance().set_d3d11_on12_device(d3d11_on12);
-                        }
-                        StereoRenderer::instance().set_d3d11_device(d3d11_dev, d3d11_on12_ctx);
-                        OpenXRContext::instance().bind_d3d11_device(d3d11_dev, d3d11_on12_ctx);
-                        Log::info("Bound D3D11On12 device to OpenXR (D3D12 game via interop)");
-                    } else {
-                        Log::error("D3D11On12CreateDevice failed: {:08x}", hr);
-                    }
-                }
+        if (pipeline_ == PipelineState::Failed &&
+            std::chrono::steady_clock::now() >= next_pipeline_attempt_) {
+            pipeline_ = PipelineState::Pending;
+        }
+        if (pipeline_ == PipelineState::Pending) {
+            if (initialize_vr_pipeline(ctx)) {
+                pipeline_ = PipelineState::Ready;
+            } else {
+                // Usually the headset or OpenXR runtime is not running yet.
+                // Retry with backoff (5 s doubling to 60 s) instead of leaving
+                // the game in 2D for the rest of the session.
+                pipeline_ = PipelineState::Failed;
+                next_pipeline_attempt_ = std::chrono::steady_clock::now() + pipeline_retry_delay_;
+                Log::warn("VR pipeline unavailable; retrying in {} s",
+                          pipeline_retry_delay_.count());
+                pipeline_retry_delay_ = std::min(pipeline_retry_delay_ * 2,
+                                                 std::chrono::seconds(60));
             }
         }
+        if (pipeline_ != PipelineState::Ready) return true;
 
-        // Phase 2: Begin latency compensation + performance tracking
+        bind_device(ctx);
+        if (bind_ == BindState::Bound && !overlay_attempted_) initialize_overlay(ctx);
+
         auto& perf = PerfMonitor::instance();
-        auto& latency = LatencyCompensator::instance();
-        auto& tracking = TrackingSystem::instance();
-        u64 frame_idx = StereoRenderer::instance().frame_count() + 1;
+        perf.begin_frame(StereoRenderer::instance().frame_count() + 1);
 
-        perf.begin_frame(frame_idx);
-        latency.begin_frame(frame_idx);
-
-        // Phase 2: Feed hook context into depth capture pipeline
-        if (ctx.api == GraphicsAPI::D3D11) {
-            // Depth buffer capture handled inside stereo_renderer
-        }
-
-        // Phase 2: Apply latency compensation to tracking
-        f64 display_time = OpenXRContext::instance().predicted_display_time();
-        if (display_time > 0.0) {
-            tracking.apply_latency_compensation(display_time);
-        }
-
-        latency.on_render_submit();
-
-        // Poll input at ~60 Hz
-        static auto last_poll = std::chrono::steady_clock::now();
-        auto now = std::chrono::steady_clock::now();
-        auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_poll);
-        if (elapsed.count() >= 16) {
+        const auto now = std::chrono::steady_clock::now();
+        if (now - last_input_poll_ >= kInputPollInterval) {
             InputProxy::instance().poll();
-            last_poll = now;
+            last_input_poll_ = now;
         }
 
-        // Render overlay
-        if (Config::instance().enable_overlay()) {
-            ImGuiOverlay::instance().render();
-        }
+        // Draw before the frame callback copies the backbuffer, so the menu is
+        // also in the image the headset shows.
+        draw_overlay(ctx);
 
-        latency.end_frame();
         perf.end_frame();
-
-        // Update config with latest latency stats for overlay display
-        Config::instance().latency_stats() = perf.get_latency_stats();
-
+        Config::instance().set_latency_stats(perf.get_latency_stats());
         return true;
     }
 
     void on_frame_capture(const FrameCapture& capture) {
-        // Phase 2: Full stereo rendering pipeline
+        if (pipeline_ != PipelineState::Ready) {
+            // StereoRenderer is not initialized and will not consume the
+            // capture, so release the depth reference the hook added for it.
+            if (capture.depth_texture) static_cast<IUnknown*>(capture.depth_texture)->Release();
+            return;
+        }
         StereoRenderer::instance().on_frame_present(capture);
     }
 
-private:
     bool initialize_vr_pipeline(const HookContext& ctx) {
-        Log::info("Initializing VR pipeline on first Present");
-
-        auto api = ctx.api;
-        if (api == GraphicsAPI::Unknown) {
-            api = Config::instance().detected_api();
-        }
-
-        // Initialize stereo renderer (initializes OpenXR, camera rig,
-        // depth reprojection, and all Phase 2 subsystems)
-        if (!StereoRenderer::instance().initialize(api)) {
+        Log::info("Initializing VR pipeline on first {} Present", api_name(ctx.api));
+        if (!StereoRenderer::instance().initialize(ctx.api)) {
             Log::error("Failed to initialize stereo renderer");
             return false;
         }
-
-        // Initialize tracking system
-        TrackingSystem::instance().initialize(
-            Config::instance().current_profile().ipd);
-
-        // Initialize overlay with the D3D device
-        void* device = ctx.device;
-        if (device) {
-            ImGuiOverlay::instance().initialize(device, api);
-        }
-
-        Log::info("VR pipeline fully initialized (Phase 2)");
+        TrackingSystem::instance().initialize(Config::instance().current_profile_copy().ipd);
+        Log::info("VR pipeline initialized");
         return true;
     }
 
-    std::atomic<bool> initialized_{false};
-    std::atomic<bool> stereo_initialized_{false};
-    std::atomic<bool> init_failed_{false};
-};
+    // Binds the presenting device to OpenXR once. A failed attempt is retried
+    // a few times, spaced out, and errors are logged on the first attempt only.
+    void bind_device(const HookContext& ctx) {
+        if (bind_ != BindState::Pending) return;
+        if (frames_until_bind_retry_ > 0) {
+            --frames_until_bind_retry_;
+            return;
+        }
 
-// ─── DLL Entry Point ─────────────────────────────────────────────────────────
+        const bool log_errors = bind_attempts_ == 0;
+        bool bound = false;
+        if (ctx.api == GraphicsAPI::D3D11) {
+            bound = bind_d3d11(ctx);
+        } else if (ctx.api == GraphicsAPI::D3D12) {
+            bound = bind_d3d12(ctx, log_errors);
+        }
+        if (bound) {
+            bind_ = BindState::Bound;
+            return;
+        }
 
-HMODULE g_module_handle = nullptr;
+        if (++bind_attempts_ >= kMaxBindAttempts) {
+            bind_ = BindState::Failed;
+            Log::error("Could not bind the game's {} device after {} attempts; VR output disabled",
+                       api_name(ctx.api), bind_attempts_);
+        } else {
+            frames_until_bind_retry_ = kFramesBetweenBindAttempts;
+        }
+    }
 
-// Vectored Exception Handler to catch any exceptions from our Present hook
-static LONG CALLBACK VrcVeHandler(PEXCEPTION_POINTERS ei) {
-    if (ei->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION ||
-        ei->ExceptionRecord->ExceptionCode == EXCEPTION_ILLEGAL_INSTRUCTION ||
-        ei->ExceptionRecord->ExceptionCode == EXCEPTION_PRIV_INSTRUCTION ||
-        ei->ExceptionRecord->ExceptionCode == EXCEPTION_BREAKPOINT) {
-        char buf[512];
-        sprintf_s(buf, "VRC_VEH: code=0x%08X addr=%p\n",
-                  ei->ExceptionRecord->ExceptionCode,
-                  ei->ExceptionRecord->ExceptionAddress);
-        OutputDebugStringA(buf);
-        Log::info("VRC_VEH: code=0x{:08X} addr={:p} flags=0x{:x}",
-                  ei->ExceptionRecord->ExceptionCode,
-                  ei->ExceptionRecord->ExceptionAddress,
-                  ei->ExceptionRecord->ExceptionFlags);
-        if (ei->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION) {
-            Log::info("VRC_VEH: AV {} addr={:p}",
-                      ei->ExceptionRecord->ExceptionInformation[0] == 0 ? "read" : "write",
-                      (void*)ei->ExceptionRecord->ExceptionInformation[1]);
-            // Dump module info
-            HMODULE crash_mod = nullptr;
-            if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-                                   GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                                    (LPCWSTR)ei->ExceptionRecord->ExceptionAddress,
-                                    &crash_mod)) {
-                wchar_t mod_path[MAX_PATH];
-                if (GetModuleFileNameW(crash_mod, mod_path, MAX_PATH)) {
-                    char mod_path_a[MAX_PATH];
-                    mod_path_a[0] = 0;
-                    wcstombs(mod_path_a, mod_path, MAX_PATH);
-                    char* name = strrchr(mod_path_a, '\\');
-                    name = name ? name + 1 : mod_path_a;
-                    Log::info("VRC_VEH: crash module: {} (base={:p})",
-                              name, (void*)crash_mod);
-                }
+    bool bind_d3d11(const HookContext& ctx) {
+        auto* device = static_cast<ID3D11Device*>(ctx.device);
+        if (!device) return false;
+        ID3D11DeviceContext* immediate = nullptr;
+        device->GetImmediateContext(&immediate);
+        if (!immediate) return false;
+
+        // The game owns the device. GetImmediateContext() added a reference
+        // that StereoRenderer owns and releases in shutdown().
+        StereoRenderer::instance().set_d3d11_device_ownership(false, true);
+        OpenXRContext::instance().bind_d3d11_device(device, immediate);
+        Log::info("Bound the game's D3D11 device to OpenXR");
+        return true;
+    }
+
+    bool bind_d3d12(const HookContext& ctx, bool log_errors) {
+        auto* device = static_cast<ID3D12Device*>(ctx.device);
+        auto* queue = static_cast<ID3D12CommandQueue*>(ctx.command_queue);
+        if (!device || !queue) return false;
+
+        // Wrap the game's D3D12 device and DIRECT queue in a D3D11 device, so
+        // the D3D11 OpenXR binding (supported by every runtime) can work on
+        // the game's D3D12 backbuffers.
+        ID3D11Device* d3d11_device = nullptr;
+        ID3D11DeviceContext* d3d11_context = nullptr;
+        IUnknown* queues[] = { queue };
+        const HRESULT hr = D3D11On12CreateDevice(
+            device, D3D11_CREATE_DEVICE_BGRA_SUPPORT, nullptr, 0,
+            queues, 1, 0, &d3d11_device, &d3d11_context, nullptr);
+        if (FAILED(hr) || !d3d11_device || !d3d11_context) {
+            if (log_errors) Log::error("D3D11On12CreateDevice failed: {:08x}", static_cast<u32>(hr));
+            if (d3d11_device) d3d11_device->Release();
+            if (d3d11_context) d3d11_context->Release();
+            return false;
+        }
+
+        // Without ID3D11On12Device the backbuffer cannot be wrapped, so do not
+        // bind a device that could never deliver a frame.
+        ID3D11On12Device* on12 = nullptr;
+        if (FAILED(d3d11_device->QueryInterface(IID_PPV_ARGS(&on12)))) {
+            if (log_errors) Log::error("D3D11On12 device does not expose ID3D11On12Device");
+            d3d11_device->Release();
+            d3d11_context->Release();
+            return false;
+        }
+
+        // StereoRenderer owns all three references from here and releases
+        // them in shutdown().
+        auto& renderer = StereoRenderer::instance();
+        renderer.set_d3d11_on12_device(on12);
+        renderer.set_d3d11_device_ownership(true, true);
+        // Also hands the device to StereoRenderer::set_d3d11_device().
+        OpenXRContext::instance().bind_d3d11_device(d3d11_device, d3d11_context);
+
+        on12_device_ = d3d11_device;
+        on12_context_ = d3d11_context;
+        on12_ = on12;
+        Log::info("Bound a D3D11On12 device on the game's D3D12 device to OpenXR");
+        return true;
+    }
+
+    // One attempt per session; the overlay is optional.
+    void initialize_overlay(const HookContext& ctx) {
+        overlay_attempted_ = true;
+
+        HWND hwnd = nullptr;
+        DXGI_SWAP_CHAIN_DESC desc = {};
+        auto* swap_chain = static_cast<IDXGISwapChain*>(ctx.swap_chain);
+        if (swap_chain && SUCCEEDED(swap_chain->GetDesc(&desc))) hwnd = desc.OutputWindow;
+        if (!hwnd) {
+            Log::warn("Overlay disabled: the swap chain has no output window");
+            return;
+        }
+
+        auto& overlay = ImGuiOverlay::instance();
+        bool ok = false;
+        if (ctx.api == GraphicsAPI::D3D11) {
+            ok = overlay.initialize_d3d11(static_cast<ID3D11Device*>(ctx.device), hwnd);
+        } else if (ctx.api == GraphicsAPI::D3D12 && on12_) {
+            ok = overlay.initialize_d3d11on12(on12_device_, on12_context_, on12_, hwnd);
+        }
+        if (!ok) Log::warn("ImGui overlay initialization failed; the F2 menu is unavailable");
+    }
+
+    void draw_overlay(const HookContext& ctx) {
+        auto& overlay = ImGuiOverlay::instance();
+        if (!Config::instance().enable_overlay() || !overlay.is_initialized()) return;
+        overlay.poll_hotkey();
+
+        auto* swap_chain = static_cast<IDXGISwapChain*>(ctx.swap_chain);
+        if (ctx.api == GraphicsAPI::D3D11) {
+            // Buffer 0 is always the one being presented in D3D11.
+            ID3D11Texture2D* back_buffer = nullptr;
+            if (SUCCEEDED(swap_chain->GetBuffer(0, IID_PPV_ARGS(&back_buffer)))) {
+                overlay.render_d3d11(back_buffer);
+                back_buffer->Release();
             }
-            // Dump stack return addresses
-            CONTEXT* ctx = ei->ContextRecord;
-            if (ctx) {
-                u64* sp = (u64*)ctx->Rsp;
-                Log::info("VRC_VEH: stack (RSP={:p}):", (void*)ctx->Rsp);
-                for (int i = 0; i < 16; i++) {
-                    Log::info("  [{:2d}] {:p}", i, (void*)sp[i]);
+        } else if (ctx.api == GraphicsAPI::D3D12) {
+            IDXGISwapChain3* sc3 = nullptr;
+            if (SUCCEEDED(swap_chain->QueryInterface(IID_PPV_ARGS(&sc3)))) {
+                ID3D12Resource* back_buffer = nullptr;
+                if (SUCCEEDED(sc3->GetBuffer(sc3->GetCurrentBackBufferIndex(),
+                                             IID_PPV_ARGS(&back_buffer)))) {
+                    overlay.render_d3d12(back_buffer);
+                    back_buffer->Release();
                 }
+                sc3->Release();
             }
         }
     }
-    return EXCEPTION_CONTINUE_SEARCH;
-}
 
-static volatile LONG g_start_guard = 0;
+    void reset_present_state() {
+        pipeline_ = PipelineState::Pending;
+        next_pipeline_attempt_ = {};
+        pipeline_retry_delay_ = std::chrono::seconds(5);
+        bind_ = BindState::Pending;
+        bind_attempts_ = 0;
+        frames_until_bind_retry_ = 0;
+        overlay_attempted_ = false;
+        present_api_ = GraphicsAPI::Unknown;
+        on12_device_ = nullptr;
+        on12_context_ = nullptr;
+        on12_ = nullptr;
+        last_input_poll_ = {};
+    }
 
-void start_converter() {
-    AddVectoredExceptionHandler(1, VrcVeHandler);
-    if (InterlockedExchange(&g_start_guard, 1)) return;
-    Log::info("Starting VR Converter Phase 2");
-    VRConverter::instance().initialize();
-}
+    std::mutex mutex_;
+    State state_ = State::Stopped;
 
-void stop_converter() {
-    VRConverter::instance().shutdown();
-}
+    PipelineState pipeline_ = PipelineState::Pending;
+    std::chrono::steady_clock::time_point next_pipeline_attempt_{};
+    std::chrono::seconds pipeline_retry_delay_{5};
+    BindState bind_ = BindState::Pending;
+    u32 bind_attempts_ = 0;
+    u32 frames_until_bind_retry_ = 0;
+    bool overlay_attempted_ = false;
+    GraphicsAPI present_api_ = GraphicsAPI::Unknown;
+    // D3D11On12 objects of a D3D12 game, owned by StereoRenderer.
+    ID3D11Device* on12_device_ = nullptr;
+    ID3D11DeviceContext* on12_context_ = nullptr;
+    ID3D11On12Device* on12_ = nullptr;
+    std::chrono::steady_clock::time_point last_input_poll_{};
+};
 
 } // namespace vrc
 
-// ─── DllMain ─────────────────────────────────────────────────────────────────
+namespace {
 
-DWORD WINAPI delayed_init(LPVOID) {
-    Sleep(200);
-    vrc::start_converter();
+DWORD WINAPI start_thread_proc(LPVOID) {
+    vrc::VRConverter::instance().start();
     return 0;
 }
 
-BOOL APIENTRY DllMain(HMODULE h_module, DWORD reason, LPVOID reserved) {
-    switch (reason) {
-        case DLL_PROCESS_ATTACH: {
-            vrc::g_module_handle = h_module;
-            DisableThreadLibraryCalls(h_module);
-            // Pin this DLL so it survives UnhookWindowsHookEx (CBT injection)
-            // Without this, Windows calls FreeLibrary on unhook and unloads us.
-            HMODULE pinned = nullptr;
-            GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_PIN, L"vr_converter.dll", &pinned);
-            HANDLE thread = CreateThread(nullptr, 0, delayed_init, nullptr, 0, nullptr);
-            if (thread) CloseHandle(thread);
-            break;
-        }
-        case DLL_PROCESS_DETACH: {
-            if (!reserved) {
-                vrc::stop_converter();
-            }
-            break;
-        }
+} // namespace
+
+BOOL APIENTRY DllMain(HMODULE h_module, DWORD reason, LPVOID /*reserved*/) {
+    if (reason == DLL_PROCESS_ATTACH) {
+        DisableThreadLibraryCalls(h_module);
+        // Pin this module so no FreeLibrary (for example UnhookWindowsHookEx
+        // after CBT injection) can unload code our hooks and threads still
+        // run. Pinning by address works under any file name.
+        HMODULE pinned = nullptr;
+        GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_PIN,
+                           reinterpret_cast<LPCWSTR>(&start_thread_proc), &pinned);
+        // The thread starts running once the loader lock is released.
+        HANDLE thread = CreateThread(nullptr, 0, start_thread_proc, nullptr, 0, nullptr);
+        if (thread) CloseHandle(thread);
     }
+    // DLL_PROCESS_DETACH does nothing. The module is pinned, so detach only
+    // happens at process exit, when the other threads are already gone and
+    // nothing may be joined or unhooked under the loader lock.
+    // StopVRConverter() is the teardown path.
     return TRUE;
 }
 
-// ─── Exported Injection Entry Point ─────────────────────────────────────────
+// ─── Exports ────────────────────────────────────────────────────────────────
 
 extern "C" __declspec(dllexport) void StartVRConverter() {
-    vrc::start_converter();
+    vrc::VRConverter::instance().start();
 }
 
 extern "C" __declspec(dllexport) void StopVRConverter() {
-    vrc::stop_converter();
+    vrc::VRConverter::instance().stop();
 }
 
-// SetWindowsHookEx callback — Windows loads this DLL into the target
-// process when the hooked message is processed. This bypasses anti-cheat
-// that blocks CreateRemoteThread + VirtualAllocEx.
+// SetWindowsHookEx callback. Windows loads this DLL into the target process
+// when the hooked message is processed, which bypasses anti-cheat that blocks
+// CreateRemoteThread + VirtualAllocEx. Nothing is initialized here: D3D/DXGI
+// calls made from inside a CBT callback are unreliable, so DLL_PROCESS_ATTACH
+// starts the converter on its own thread. The module is pinned there, so
+// UnhookWindowsHookEx does not unload it.
 extern "C" __declspec(dllexport) LRESULT CALLBACK VRCbtProc(int nCode, WPARAM wParam, LPARAM lParam) {
-    // Deliberately do NOT call start_converter() here — D3D11/DXGI APIs
-    // behave differently when called from within a Windows CBT hook callback
-    // (vtable[8] Present patching via MinHook is not effective).  Instead,
-    // DLL_PROCESS_ATTACH spawns delayed_init which handles initialization
-    // on a dedicated thread after 200 ms.
-    //
-    // The DLL is pinned by GET_MODULE_HANDLE_EX_FLAG_PIN during
-    // DLL_PROCESS_ATTACH, so UnhookWindowsHookEx won't unload us.
-    if (nCode < 0) return CallNextHookEx(nullptr, nCode, wParam, lParam);
     return CallNextHookEx(nullptr, nCode, wParam, lParam);
 }

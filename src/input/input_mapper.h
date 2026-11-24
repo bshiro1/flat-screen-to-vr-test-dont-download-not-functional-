@@ -27,6 +27,8 @@ struct InputProfile {
     f32 look_sensitivity = 1.0f;
     f32 movement_smoothing = 0.5f;
     bool head_aim = true;           // Drive mouse look from head rotation delta
+    bool invert_x = false;          // Flip head-look yaw (use only if runtime sign differs)
+    bool invert_y = false;          // Flip head-look pitch
     bool snap_turn = true;
     f32 snap_turn_angle = 45.0f;
     i32 snap_turn_mouse_pixels = 300; // Mouse delta injected per snap turn
@@ -50,6 +52,11 @@ public:
     // dt_ms is the frame interval in milliseconds.
     void process_frame(f64 dt_ms);
 
+    // Release every key/mouse button we are currently holding down. Must be
+    // called when the XR session drops or at shutdown, otherwise injected keys
+    // (WASD, LMB, ...) remain logically and physically pressed forever.
+    void release_all_held();
+
     // VR controller -> game input translation
     void process_vr_aim(const Vec3& aim_direction);
     void process_vr_thumbstick(const Vec2& stick, InputAction horizontal, InputAction vertical);
@@ -72,6 +79,9 @@ private:
     // Per-frame state for process_frame()
     std::unordered_map<u16, bool> vk_press_state_;
     Quat    last_head_rot_{0, 0, 0, 1};
+    bool    head_rot_initialized_ = false;
+    f64     look_remainder_x_ = 0.0; // fractional pixels, avoids slow-look stutter
+    f64     look_remainder_y_ = 0.0;
     f32     prev_snap_rx_   = 0.0f;
     f64     snap_cooldown_  = 0.0;   // ms remaining before next snap is allowed
 };

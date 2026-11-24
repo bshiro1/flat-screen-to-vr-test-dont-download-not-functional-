@@ -3,146 +3,74 @@
 #include "dx12_hook.h"
 #include "core/logging.h"
 #include <windows.h>
-#include <tlhelp32.h>
+#include <MinHook.h>
 
 namespace vrc {
+
+bool wait_for_detours_to_drain(const std::atomic<i32>& count, u32 timeout_ms) {
+    const ULONGLONG deadline = GetTickCount64() + timeout_ms;
+    while (count.load(std::memory_order_acquire) != 0) {
+        if (GetTickCount64() >= deadline) return false;
+        Sleep(1);
+    }
+    return true;
+}
+
+bool ensure_minhook_initialized() {
+    const MH_STATUS status = MH_Initialize();
+    if (status != MH_OK && status != MH_ERROR_ALREADY_INITIALIZED) {
+        Log::error("MinHook initialization failed: {}", static_cast<int>(status));
+        return false;
+    }
+    return true;
+}
 
 HookManager& HookManager::instance() {
     static HookManager mgr;
     return mgr;
 }
 
-bool HookManager::initialize() {
-    Log::info("HookManager initializing");
-    if (!detect_graphics_api()) {
-        Log::warn("No supported graphics API detected, will hook on first Present");
+void HookManager::initialize() {
+    // vr_converter.dll delay-loads d3d12.dll, so a loaded d3d12.dll means the
+    // game (or one of its libraries) loaded it. A game can still load both
+    // runtimes, so this never decides which hooks to install.
+    if (GetModuleHandleW(L"d3d12.dll")) {
+        api_hint_ = GraphicsAPI::D3D12;
+    } else if (GetModuleHandleW(L"d3d11.dll")) {
+        api_hint_ = GraphicsAPI::D3D11;
+    } else {
+        api_hint_ = GraphicsAPI::Unknown;
     }
-    return true;
+    Log::info("HookManager: graphics API hint = {} (the swap chain device decides at Present)",
+              api_hint_ == GraphicsAPI::D3D12 ? "D3D12" :
+              api_hint_ == GraphicsAPI::D3D11 ? "D3D11" : "none loaded yet");
+}
+
+bool HookManager::install_hooks() {
+    const bool present_ok = D3D11Hook::instance().hook_present(*this);
+    if (!present_ok) {
+        Log::error("DXGI Present hook could not be installed; no frames will be captured");
+    }
+    // D3D12 swap chains are handled by the DXGI Present hook too; the D3D12
+    // hook only records the game's DIRECT command queue, which D3D11On12 needs.
+    D3D12Hook::instance().hook();
+    return present_ok;
 }
 
 void HookManager::shutdown() {
     Log::info("HookManager shutting down");
-    if (hooked_) {
-        unhook_present(detected_api_);
-        unhook_wndproc();
+    // Present first: its detour is what drives the VR pipeline, and it can
+    // submit D3D12 work through ExecuteCommandLists while it runs.
+    D3D11Hook::instance().unhook();
+    D3D12Hook::instance().unhook();
+}
+
+void HookManager::fire_on_frame(const FrameCapture& capture) {
+    if (on_frame_) {
+        on_frame_(capture);
+    } else if (capture.depth_texture) {
+        static_cast<IUnknown*>(capture.depth_texture)->Release();
     }
-}
-
-bool HookManager::attach_to_process(const std::string& process_name) {
-    target_process_ = process_name;
-    Log::info("Attaching to process: {}", process_name);
-    return detect_graphics_api();
-}
-
-void HookManager::detach() {
-    shutdown();
-}
-
-bool HookManager::detect_graphics_api() {
-    HMODULE d3d11 = GetModuleHandleA("d3d11.dll");
-    HMODULE d3d12 = GetModuleHandleA("d3d12.dll");
-    HMODULE opengl = GetModuleHandleA("opengl32.dll");
-    HMODULE vulkan = GetModuleHandleA("vulkan-1.dll");
-
-    if (d3d12) {
-        detected_api_ = GraphicsAPI::D3D12;
-        Log::info("Detected D3D12");
-        return true;
-    }
-    if (d3d11) {
-        detected_api_ = GraphicsAPI::D3D11;
-        Log::info("Detected D3D11");
-        return true;
-    }
-    if (vulkan) {
-        detected_api_ = GraphicsAPI::Vulkan;
-        Log::info("Detected Vulkan");
-        return true;
-    }
-    if (opengl) {
-        detected_api_ = GraphicsAPI::OpenGL;
-        Log::info("Detected OpenGL");
-        return true;
-    }
-
-    detected_api_ = GraphicsAPI::Unknown;
-    return false;
-}
-
-void* HookManager::find_swap_chain() {
-    return nullptr;
-}
-
-bool HookManager::hook_present(GraphicsAPI api) {
-    bool success = false;
-    switch (api) {
-        case GraphicsAPI::D3D11:
-            success = hook_d3d11();
-            break;
-        case GraphicsAPI::D3D12:
-            success = hook_d3d12();
-            break;
-        case GraphicsAPI::OpenGL:
-            success = hook_opengl();
-            break;
-        case GraphicsAPI::Vulkan:
-            success = hook_vulkan();
-            break;
-        default:
-            Log::error("Unknown graphics API for hooking");
-            return false;
-    }
-
-    if (success) {
-        hooked_ = true;
-        Log::info("Present hook installed for {}", static_cast<int>(api));
-    }
-    return success;
-}
-
-bool HookManager::unhook_present(GraphicsAPI api) {
-    if (!hooked_) return true;
-    hooked_ = false;
-    switch (api) {
-        case GraphicsAPI::D3D11:
-            D3D11Hook::instance().unhook();
-            break;
-        case GraphicsAPI::D3D12:
-            D3D12Hook::instance().unhook();
-            break;
-        default:
-            break;
-    }
-    Log::info("Present hook removed");
-    return true;
-}
-
-bool HookManager::hook_wndproc() {
-    Log::info("WndProc hook installed");
-    return true;
-}
-
-bool HookManager::unhook_wndproc() {
-    Log::info("WndProc hook removed");
-    return true;
-}
-
-bool HookManager::hook_d3d11() {
-    return D3D11Hook::instance().hook_present(*this);
-}
-
-bool HookManager::hook_d3d12() {
-    return D3D12Hook::instance().hook_present(*this);
-}
-
-bool HookManager::hook_opengl() {
-    Log::warn("OpenGL hooking not yet implemented");
-    return false;
-}
-
-bool HookManager::hook_vulkan() {
-    Log::warn("Vulkan hooking not yet implemented");
-    return false;
 }
 
 } // namespace vrc

@@ -7,6 +7,7 @@
 #include <d3dcompiler.h>
 #include <dxgi1_2.h>
 #include <cstdio>
+#include <cstring>
 #include <cmath>
 
 #pragma comment(lib, "d3d11.lib")
@@ -199,9 +200,23 @@ static void cleanup(TestApp& app) {
 }
 
 int main() {
-    // Step 1: Load vr_converter.dll in-process to test DLL init
-    HMODULE dll = LoadLibraryA("C:\\Users\\shiro\\vr-game-converter\\build\\vr_converter.dll");
+    // Step 1: Load vr_converter.dll in-process to test DLL init.
+    // Resolve it next to this executable instead of a hard-coded developer path,
+    // so the harness works from any build directory / machine.
+    char dll_path[MAX_PATH] = {};
+    char exe_path[MAX_PATH] = {};
+    GetModuleFileNameA(nullptr, exe_path, MAX_PATH);
+    char* slash = strrchr(exe_path, '\\');
+    if (slash) {
+        *(slash + 1) = '\0';
+        snprintf(dll_path, MAX_PATH, "%svr_converter.dll", exe_path);
+    } else {
+        snprintf(dll_path, MAX_PATH, "vr_converter.dll");
+    }
+
+    HMODULE dll = LoadLibraryA(dll_path);
     if (dll) {
+        printf("DLL loaded from %s\n", dll_path);
         printf("DLL loaded successfully via LoadLibrary\n");
         // Call the exported entry point
         auto start = (void(*)())GetProcAddress(dll, "StartVRConverter");

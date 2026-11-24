@@ -1,0 +1,27 @@
+# CMake / Ninja / Visual Studio build trees
+/build/
+/build-*/
+/out/
+.vs/
+CMakeUserPresets.json
+
+# Compiler and linker outputs (the source tree contains no binaries that are
+# needed to build; dependencies come from FetchContent)
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.dll
+*.exe
+
+# Vendored third-party binaries, if any are ever added, must stay tracked
+!/third_party/**/*.lib
+!/third_party/**/*.dll
+
+# Python caches
+__pycache__/
+*.pyc
+
+# Dear ImGui writes window layout next to the working directory
+imgui.ini

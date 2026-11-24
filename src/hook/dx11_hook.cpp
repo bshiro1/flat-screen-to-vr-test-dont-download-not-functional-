@@ -3,574 +3,577 @@
 #include "hook_manager.h"
 #include "core/logging.h"
 #include <MinHook.h>
+#include <chrono>
+#include <cmath>
+#include <vector>
 
 namespace vrc {
+
+namespace {
+
+constexpr u32 kDrainTimeoutMs = 2000;
+// Depth views cached at once. Past this, new views are ignored until the next
+// Present flushes the cache.
+constexpr size_t kMaxCachedDsvs = 128;
+// Presents between cache flushes, so views the game destroyed are released.
+constexpr u32 kDsvCacheFlushInterval = 600;
+// Depth must match the backbuffer within this fraction in width, height and
+// aspect ratio; this rejects shadow maps, probe targets and UI buffers.
+constexpr f32 kDepthSizeTolerance = 0.15f;
+
+// The Present body runs on the game's render thread; a runtime compositor can
+// call Present again from inside it. Per thread, so a second swap chain on
+// another thread is still processed.
+thread_local bool tl_in_pipeline = false;
+// OMSetRenderTargets state, per thread. tl_last_dsv is compared only, never
+// dereferenced; tl_depth_frame resets it every Present.
+thread_local bool tl_in_om_detour = false;
+thread_local ID3D11DepthStencilView* tl_last_dsv = nullptr;
+thread_local u64 tl_depth_frame = 0;
+
+struct ThreadFlag {
+    explicit ThreadFlag(bool& flag) : flag_(flag) { flag_ = true; }
+    ~ThreadFlag() { flag_ = false; }
+    bool& flag_;
+};
+
+// The trampoline is published before the hook is enabled because the detour
+// can run on another thread as soon as MH_EnableHook returns.
+template <typename Fn>
+bool create_and_enable_hook(void* target, void* detour, Fn& original_out, const char* name) {
+    Fn original = nullptr;
+    if (MH_CreateHook(target, detour, reinterpret_cast<void**>(&original)) != MH_OK || !original) {
+        Log::warn("MH_CreateHook failed for {}", name);
+        return false;
+    }
+    original_out = original;
+    if (MH_EnableHook(target) != MH_OK) {
+        Log::warn("MH_EnableHook failed for {}", name);
+        MH_RemoveHook(target);  // never enabled, so no thread can be inside it
+        original_out = nullptr;
+        return false;
+    }
+    return true;
+}
+
+void warn_if_slow(std::chrono::steady_clock::time_point start, const char* what) {
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start).count();
+    static std::atomic<u32> slow_count{0};
+    if (ms > 100 && slow_count.fetch_add(1, std::memory_order_relaxed) < 10) {
+        Log::warn("original {} took {} ms", what, ms);
+    }
+}
+
+bool matches_backbuffer(const D3D11_TEXTURE2D_DESC& desc, u32 bb_width, u32 bb_height) {
+    if (!desc.Width || !desc.Height) return false;
+    const f32 bb_aspect = static_cast<f32>(bb_width) / static_cast<f32>(bb_height);
+    const f32 tex_aspect = static_cast<f32>(desc.Width) / static_cast<f32>(desc.Height);
+    return std::fabs(static_cast<f32>(desc.Width) - bb_width) <= bb_width * kDepthSizeTolerance &&
+           std::fabs(static_cast<f32>(desc.Height) - bb_height) <= bb_height * kDepthSizeTolerance &&
+           std::fabs(tex_aspect - bb_aspect) <= bb_aspect * kDepthSizeTolerance;
+}
+
+// Creates a 1x1 swap chain for reading the DXGI vtables: flip-model first,
+// legacy DISCARD if the factory or OS does not support flip-model.
+IDXGISwapChain* create_probe_swap_chain(ID3D11Device* device, HWND hwnd) {
+    IDXGIDevice* dxgi_device = nullptr;
+    if (FAILED(device->QueryInterface(IID_PPV_ARGS(&dxgi_device)))) return nullptr;
+    IDXGIAdapter* adapter = nullptr;
+    HRESULT hr = dxgi_device->GetAdapter(&adapter);
+    dxgi_device->Release();
+    if (FAILED(hr)) return nullptr;
+    IDXGIFactory* factory = nullptr;
+    hr = adapter->GetParent(IID_PPV_ARGS(&factory));
+    adapter->Release();
+    if (FAILED(hr)) return nullptr;
+
+    IDXGISwapChain* swap_chain = nullptr;
+    IDXGIFactory2* factory2 = nullptr;
+    if (SUCCEEDED(factory->QueryInterface(IID_PPV_ARGS(&factory2)))) {
+        DXGI_SWAP_CHAIN_DESC1 desc = {};
+        desc.Width = 1;
+        desc.Height = 1;
+        desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        desc.SampleDesc.Count = 1;
+        desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+        desc.BufferCount = 2;
+        desc.Scaling = DXGI_SCALING_STRETCH;
+        desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+        desc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
+        IDXGISwapChain1* sc1 = nullptr;
+        if (SUCCEEDED(factory2->CreateSwapChainForHwnd(device, hwnd, &desc, nullptr, nullptr, &sc1))) {
+            swap_chain = sc1;
+        }
+        factory2->Release();
+    }
+    if (!swap_chain) {
+        DXGI_SWAP_CHAIN_DESC desc = {};
+        desc.BufferCount = 1;
+        desc.BufferDesc.Width = 1;
+        desc.BufferDesc.Height = 1;
+        desc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+        desc.OutputWindow = hwnd;
+        desc.SampleDesc.Count = 1;
+        desc.Windowed = TRUE;
+        desc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+        if (FAILED(factory->CreateSwapChain(device, &desc, &swap_chain))) swap_chain = nullptr;
+    }
+    factory->Release();
+    return swap_chain;
+}
+
+} // namespace
 
 D3D11Hook& D3D11Hook::instance() {
     static D3D11Hook hook;
     return hook;
 }
 
-// Helper: create a temp D3D11 device and return its DXGI factory
-static IDXGIFactory2* get_dxgi_factory() {
-    ID3D11Device* dev = nullptr;
-    HRESULT hr = D3D11CreateDevice(
-        nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0,
-        nullptr, 0, D3D11_SDK_VERSION, &dev, nullptr, nullptr);
-    if (FAILED(hr) || !dev) return nullptr;
-
-    IDXGIDevice* dxgi_dev = nullptr;
-    hr = dev->QueryInterface(&dxgi_dev);
-    if (FAILED(hr) || !dxgi_dev) { dev->Release(); return nullptr; }
-
-    IDXGIAdapter* adapter = nullptr;
-    hr = dxgi_dev->GetAdapter(&adapter);
-    dxgi_dev->Release();
-    if (FAILED(hr) || !adapter) { dev->Release(); return nullptr; }
-
-    IDXGIFactory2* factory = nullptr;
-    hr = adapter->GetParent(IID_PPV_ARGS(&factory));
-    adapter->Release();
-    dev->Release();
-    return factory;
-}
-
-bool D3D11Hook::hook_present_globally() {
-    if (present_func_) return true;
-
-    HINSTANCE inst = GetModuleHandleA(nullptr);
-    if (!inst) return false;
-
-    WNDCLASSEXA wc = { sizeof(WNDCLASSEXA) };
-    wc.lpfnWndProc = DefWindowProcA;
-    wc.hInstance = inst;
-    wc.lpszClassName = "VRC_TempHook_Window";
-    if (!RegisterClassExA(&wc) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
-        return false;
-
-    HWND hwnd = CreateWindowExA(0, "VRC_TempHook_Window", "", WS_DISABLED,
-                                0, 0, 1, 1, nullptr, nullptr, inst, nullptr);
-    if (!hwnd) return false;
-
-    // Get an IDXGIFactory2 for creating FLIP-mode swap chains
-    IDXGIFactory2* factory = get_dxgi_factory();
-    if (!factory) {
-        Log::warn("Failed to get DXGI factory for temp swap chain");
-        DestroyWindow(hwnd);
-        return false;
-    }
-
-    // Try all swap effects and log each address
-    struct SwapEffectTest {
-        const char* name;
-        DXGI_SWAP_EFFECT effect;
-        bool flip;
-    } tests[] = {
-        { "FLIP_DISCARD",    DXGI_SWAP_EFFECT_FLIP_DISCARD,    true },
-        { "FLIP_SEQUENTIAL", DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL, true },
-        { "SEQUENTIAL",      DXGI_SWAP_EFFECT_SEQUENTIAL,      false },
-        { "DISCARD",         DXGI_SWAP_EFFECT_DISCARD,         false },
-    };
-
-    int count_installed = 0;
-
-    for (auto& t : tests) {
-        void* pf = nullptr;
-
-        if (t.flip) {
-            DXGI_SWAP_CHAIN_DESC1 scd1 = {};
-            scd1.Width = 1;
-            scd1.Height = 1;
-            scd1.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-            scd1.Stereo = FALSE;
-            scd1.SampleDesc.Count = 1;
-            scd1.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-            scd1.BufferCount = 2;
-            scd1.Scaling = DXGI_SCALING_STRETCH;
-            scd1.SwapEffect = t.effect;
-            scd1.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
-            scd1.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
-
-            ID3D11Device* d = nullptr;
-            ID3D11DeviceContext* c = nullptr;
-            IDXGISwapChain1* sc1 = nullptr;
-
-            if (SUCCEEDED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0,
-                                             nullptr, 0, D3D11_SDK_VERSION, &d, nullptr, &c)) &&
-                d && SUCCEEDED(factory->CreateSwapChainForHwnd(d, hwnd, &scd1, nullptr, nullptr, &sc1)) &&
-                sc1) {
-                IDXGISwapChain* sc = nullptr;
-                if (SUCCEEDED(sc1->QueryInterface(IID_PPV_ARGS(&sc))) && sc) {
-                    pf = (*reinterpret_cast<void***>(sc))[8];
-                    sc->Release();
-                }
-                sc1->Release();
-            }
-            if (d) d->Release();
-            if (c) c->Release();
-        } else {
-            ID3D11Device* d = nullptr;
-            ID3D11DeviceContext* c = nullptr;
-            IDXGISwapChain* sc = nullptr;
-            DXGI_SWAP_CHAIN_DESC scd = {};
-            scd.BufferCount = 1;
-            scd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-            scd.BufferDesc.Width = 1;
-            scd.BufferDesc.Height = 1;
-            scd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-            scd.OutputWindow = hwnd;
-            scd.SampleDesc.Count = 1;
-            scd.Windowed = TRUE;
-            scd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
-
-            if (SUCCEEDED(D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0,
-                                                         nullptr, 0, D3D11_SDK_VERSION, &scd,
-                                                         &sc, &d, nullptr, &c)) && sc) {
-                pf = (*reinterpret_cast<void***>(sc))[8];
-                sc->Release();
-            }
-            if (d) d->Release();
-            if (c) c->Release();
-        }
-
-        Log::info("Present vtable[8] {} = {:p}", t.name, pf);
-
-        // Skip if already hooked (duplicate address across swap effects)
-        bool already = (pf && pf == present_func_);
-        if (!already && pf) {
-            for (auto& [a, o] : extra_present_hooks_) {
-                if (a == pf) { already = true; break; }
-            }
-        }
-
-        if (pf && !already) {
-            PresentFn new_orig = nullptr;
-            Log::info("MH_CreateHook: pf={:p}, detour_addr={:p}", pf, (void*)(uintptr_t)&present_detour);
-            if (MH_CreateHook(pf, &present_detour, reinterpret_cast<void**>(&new_orig)) == MH_OK && new_orig) {
-                // Set originals BEFORE EnableHook to avoid race: game thread may
-                // call Present immediately after enable, and present_detour needs
-                // present_func_/original_present_ to be valid.
-                if (!present_func_) {
-                    present_func_ = pf;
-                    original_present_ = new_orig;
-                } else {
-                    extra_present_hooks_.push_back({pf, new_orig});
-                }
-                Log::info("new_orig (trampoline) = {:p}", (void*)new_orig);
-                // Dump trampoline bytes to verify relay structure
-                unsigned char tb[32] = {0};
-                memcpy(tb, new_orig, 32);
-                Log::info("trampoline[0:20] = {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
-                    tb[0], tb[1], tb[2], tb[3], tb[4], tb[5], tb[6], tb[7], tb[8], tb[9],
-                    tb[10], tb[11], tb[12], tb[13], tb[14], tb[15], tb[16], tb[17], tb[18], tb[19]);
-                Log::info("trampoline[20:32] = {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
-                    tb[20], tb[21], tb[22], tb[23], tb[24], tb[25], tb[26], tb[27], tb[28], tb[29], tb[30], tb[31]);
-                if (MH_EnableHook(pf) == MH_OK) {
-                    count_installed++;
-                    Log::info("D3D11 Present hook installed for {}", t.name);
-                    // Read full JMP instruction to verify redirect target
-                    unsigned char b[8] = {0};
-                    memcpy(b, pf, 8);
-                    if (b[0] == 0xE9) {
-                        int32_t rel = *(int32_t*)&b[1];
-                        void* target = (char*)pf + 5 + rel;
-                        void* detour_addr = (void*)(uintptr_t)present_detour;
-                        Log::info("Present JMP target = {:p}, present_detour = {:p}",
-                                  target, detour_addr);
-                    }
-                }
-            }
-        }
-    }
-
-    // Also check Present1 (vtable[22] on IDXGISwapChain1)
-    // Some games call Present1 instead of Present
-    ID3D11Device* check_d = nullptr;
-    ID3D11DeviceContext* check_c = nullptr;
-    IDXGISwapChain1* check_sc1 = nullptr;
-    DXGI_SWAP_CHAIN_DESC1 check_scd1 = {};
-    check_scd1.Width = 1;
-    check_scd1.Height = 1;
-    check_scd1.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-    check_scd1.Stereo = FALSE;
-    check_scd1.SampleDesc.Count = 1;
-    check_scd1.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-    check_scd1.BufferCount = 2;
-    check_scd1.Scaling = DXGI_SCALING_STRETCH;
-    check_scd1.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
-    check_scd1.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
-    check_scd1.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
-    if (SUCCEEDED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0,
-                                     nullptr, 0, D3D11_SDK_VERSION, &check_d, nullptr, &check_c)) &&
-        check_d && SUCCEEDED(factory->CreateSwapChainForHwnd(check_d, hwnd, &check_scd1, nullptr, nullptr, &check_sc1)) &&
-        check_sc1) {
-        void** check_vtbl = *reinterpret_cast<void***>(check_sc1);
-        void* present1_addr = check_vtbl[22];  // IDXGISwapChain1::Present1
-        Log::info("Present1 vtable[22] = {:p} (Present = {:p})", present1_addr, (void*)present_func_);
-        if (present1_addr && present1_addr != present_func_) {
-            bool already = false;
-            for (auto& [a, o] : extra_present_hooks_) {
-                if (a == present1_addr) { already = true; break; }
-            }
-            if (!already) {
-                PresentFn new_orig = nullptr;
-                if (MH_CreateHook(present1_addr, &present_detour, reinterpret_cast<void**>(&new_orig)) == MH_OK && new_orig) {
-                    extra_present_hooks_.push_back({present1_addr, new_orig});
-                    if (MH_EnableHook(present1_addr) == MH_OK) {
-                        count_installed++;
-                        Log::info("D3D11 Present1 (vtable[22]) hook installed");
-                    }
-                }
-            }
-        }
-        check_sc1->Release();
-    }
-    if (check_d) check_d->Release();
-    if (check_c) check_c->Release();
-
-    factory->Release();
-    DestroyWindow(hwnd);
-
-    if (count_installed > 0) {
-        Log::info("D3D11 Present hook installed globally via temp swap chain ({} effects)", count_installed);
-        // Verify patch after a short delay
-        if (present_func_) {
-            unsigned char v[2] = {0};
-            memcpy(v, present_func_, 2);
-            Log::info("Present first bytes AFTER install: {:02x} {:02x}", v[0], v[1]);
-        }
-
-    } else {
-        Log::warn("Failed to hook Present globally");
-    }
-    return count_installed > 0;
-}
-
 bool D3D11Hook::hook_present(HookManager& mgr) {
-    if (hooked_) {
-        Log::warn("D3D11 hook already installed");
+    std::lock_guard<std::mutex> lock(install_mutex_);
+    hook_manager_ = &mgr;
+    if (!ensure_minhook_initialized()) return false;
+
+    if (present_func_ || present1_func_) {
+        // Left disabled by an unhook() whose detours did not drain.
+        if (present_func_) MH_EnableHook(present_func_);
+        if (present1_func_) MH_EnableHook(present1_func_);
+        if (om_set_render_targets_func_) MH_EnableHook(om_set_render_targets_func_);
+        Log::info("DXGI Present hooks re-enabled");
         return true;
     }
+    return install_hooks_via_probe();
+}
 
-    hook_manager_ = &mgr;
-
-    HMODULE d3d11_mod = GetModuleHandleA("d3d11.dll");
-    if (!d3d11_mod) return false;
-
-    MH_STATUS init_status = MH_Initialize();
-    if (init_status != MH_OK && init_status != MH_ERROR_ALREADY_INITIALIZED) {
-        Log::error("MinHook initialization failed: {}", static_cast<int>(init_status));
+bool D3D11Hook::install_hooks_via_probe() {
+    // Injection is late, so the game's swap chain already exists. The DXGI and
+    // D3D11 method addresses are shared by every object of the same class, so
+    // a throwaway device, context and swap chain give us the game's addresses.
+    HINSTANCE inst = GetModuleHandleW(nullptr);
+    WNDCLASSEXW wc = {};
+    wc.cbSize = sizeof(wc);
+    wc.lpfnWndProc = DefWindowProcW;
+    wc.hInstance = inst;
+    wc.lpszClassName = L"VRC_ProbeWindow";
+    const bool registered = RegisterClassExW(&wc) != 0;
+    if (!registered && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
+        Log::error("Could not register the probe window class: {}", GetLastError());
+        return false;
+    }
+    HWND hwnd = CreateWindowExW(0, wc.lpszClassName, L"", WS_DISABLED,
+                                0, 0, 1, 1, nullptr, nullptr, inst, nullptr);
+    if (!hwnd) {
+        Log::error("Could not create the probe window: {}", GetLastError());
+        if (registered) UnregisterClassW(wc.lpszClassName, inst);
         return false;
     }
 
-    // Hook D3D11CreateDevice
-    auto create_dev = GetProcAddress(d3d11_mod, "D3D11CreateDevice");
-    if (create_dev) {
-        if (MH_CreateHook(create_dev, &create_device_detour,
-                          reinterpret_cast<void**>(&original_create_device_)) != MH_OK) {
-            Log::warn("MH_CreateHook failed for D3D11CreateDevice");
-        } else if (MH_EnableHook(create_dev) != MH_OK) {
-            Log::warn("MH_EnableHook failed for D3D11CreateDevice");
-        } else {
-            Log::info("D3D11CreateDevice hook installed");
+    ID3D11Device* device = nullptr;
+    ID3D11DeviceContext* context = nullptr;
+    IDXGISwapChain* swap_chain = nullptr;
+    const HRESULT hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0,
+                                         nullptr, 0, D3D11_SDK_VERSION,
+                                         &device, nullptr, &context);
+    if (SUCCEEDED(hr) && device) {
+        swap_chain = create_probe_swap_chain(device, hwnd);
+    } else {
+        Log::error("Could not create the probe D3D11 device: {:08x}", static_cast<u32>(hr));
+    }
+
+    if (swap_chain) {
+        void* present = (*reinterpret_cast<void***>(swap_chain))[8];
+        void* present1 = nullptr;
+        IDXGISwapChain1* sc1 = nullptr;
+        if (SUCCEEDED(swap_chain->QueryInterface(IID_PPV_ARGS(&sc1)))) {
+            present1 = (*reinterpret_cast<void***>(sc1))[22];
+            sc1->Release();
+        }
+
+        if (present && create_and_enable_hook(present, reinterpret_cast<void*>(&present_detour),
+                                              original_present_, "IDXGISwapChain::Present")) {
+            present_func_ = present;
+        }
+        if (present1 && present1 != present &&
+            create_and_enable_hook(present1, reinterpret_cast<void*>(&present1_detour),
+                                   original_present1_, "IDXGISwapChain1::Present1")) {
+            present1_func_ = present1;
+        }
+        Log::info("DXGI hooks: Present {:p} ({}), Present1 {:p} ({})",
+                  present, present_func_ ? "hooked" : "failed",
+                  present1, present1_func_ ? "hooked" : "failed");
+    } else if (device) {
+        Log::error("Could not create a probe swap chain; Present cannot be hooked");
+    }
+
+    // Depth capture is optional: without it Depth3D falls back to Screen mode.
+    // ID3D11DeviceContext vtable slot 33 is OMSetRenderTargets.
+    if ((present_func_ || present1_func_) && context) {
+        void* om = (*reinterpret_cast<void***>(context))[33];
+        if (om && create_and_enable_hook(om, reinterpret_cast<void*>(&omset_render_targets_detour),
+                                         original_om_set_render_targets_,
+                                         "ID3D11DeviceContext::OMSetRenderTargets")) {
+            om_set_render_targets_func_ = om;
         }
     }
 
-    // Hook D3D11CreateDeviceAndSwapChain
-    auto create_dev_sc = GetProcAddress(d3d11_mod, "D3D11CreateDeviceAndSwapChain");
-    if (create_dev_sc) {
-        if (MH_CreateHook(create_dev_sc, &create_device_and_swapchain_detour,
-                          reinterpret_cast<void**>(&original_create_device_and_swapchain_)) != MH_OK) {
-            Log::warn("MH_CreateHook failed for D3D11CreateDeviceAndSwapChain");
-        } else if (MH_EnableHook(create_dev_sc) != MH_OK) {
-            Log::warn("MH_EnableHook failed for D3D11CreateDeviceAndSwapChain");
-        } else {
-            Log::info("D3D11CreateDeviceAndSwapChain hook installed");
-        }
-    }
+    if (swap_chain) swap_chain->Release();
+    if (context) context->Release();
+    if (device) device->Release();
+    DestroyWindow(hwnd);
+    if (registered) UnregisterClassW(wc.lpszClassName, inst);
 
-    // Hook Present globally — works even if game already has a swap chain
-    if (!hook_present_globally()) {
-        Log::warn("No existing swap chain found — will hook on next creation");
-    }
-
-    // Log captured swap chain's vtable[8] for comparison
-    if (captured_swap_chain_) {
-        void* captured_vtbl8 = (*reinterpret_cast<void***>(captured_swap_chain_))[8];
-        Log::info("VRC: captured swap chain vtable[8] = {:p} (hooked addr = {:p})",
-                  captured_vtbl8, (void*)present_func_);
-    }
-
-    hooked_ = true;
-    Log::info("D3D11 hooks installed");
-    return true;
+    return present_func_ != nullptr || present1_func_ != nullptr;
 }
 
 void D3D11Hook::unhook() {
-    if (!hooked_) return;
-
-    // Remove extra present hooks
-    for (auto& [addr, orig] : extra_present_hooks_) {
-        MH_DisableHook(addr);
-        MH_RemoveHook(addr);
+    std::lock_guard<std::mutex> lock(install_mutex_);
+    void* targets[] = { present_func_, present1_func_, om_set_render_targets_func_ };
+    for (void* target : targets) {
+        if (target) MH_DisableHook(target);
     }
-    extra_present_hooks_.clear();
 
-    if (present_func_) {
-        MH_DisableHook(present_func_);
-        MH_RemoveHook(present_func_);
+    if (wait_for_detours_to_drain(in_flight_, kDrainTimeoutMs)) {
+        for (void* target : targets) {
+            if (target) MH_RemoveHook(target);
+        }
         present_func_ = nullptr;
+        original_present_ = nullptr;
+        present1_func_ = nullptr;
+        original_present1_ = nullptr;
+        om_set_render_targets_func_ = nullptr;
+        original_om_set_render_targets_ = nullptr;
+    } else {
+        // A thread is still inside a detour (e.g. a Present blocked on vsync)
+        // and will return through its trampoline, so keep the hooks allocated
+        // and disabled. hook_present() re-enables them on the next start.
+        Log::warn("DXGI detours still running after {} ms; hooks left disabled", kDrainTimeoutMs);
     }
-    if (original_create_device_and_swapchain_) {
-        HMODULE d3d11_mod = GetModuleHandleA("d3d11.dll");
-        if (d3d11_mod) {
-            auto addr = GetProcAddress(d3d11_mod, "D3D11CreateDeviceAndSwapChain");
-            if (addr) { MH_DisableHook(addr); MH_RemoveHook(addr); }
-        }
-    }
-    if (original_create_device_) {
-        HMODULE d3d11_mod = GetModuleHandleA("d3d11.dll");
-        if (d3d11_mod) {
-            auto addr = GetProcAddress(d3d11_mod, "D3D11CreateDevice");
-            if (addr) { MH_DisableHook(addr); MH_RemoveHook(addr); }
-        }
-    }
-    hooked_ = false;
-    Log::info("D3D11 hook removed");
+
+    release_depth_state();
+    logged_waiting_for_queue_ = false;
+    Log::info("DXGI Present hooks removed");
 }
 
-void D3D11Hook::hook_swapchain_present(IDXGISwapChain* swap_chain) {
-    __try {
-        void** vtable = *reinterpret_cast<void***>(swap_chain);
-        void* present_func = vtable[8];
-        Log::info("VRC: hook_swapchain_present called — vtable[8]={:p}", present_func);
-
-        if (present_func_) {
-            if (present_func != present_func_) {
-                Log::warn("VRC: swap chain vtable[8] DIFFERS from hooked address! hooked={:p}, actual={:p}",
-                          present_func_, present_func);
-            }
-            return;
-        }
-
-        PresentFn new_orig = nullptr;
-        if (MH_CreateHook(present_func, &present_detour,
-                          reinterpret_cast<void**>(&new_orig)) != MH_OK || !new_orig) {
-            Log::warn("MH_CreateHook failed for Present on real swap chain");
-            return;
-        }
-
-        // Set originals BEFORE enable to avoid race
-        present_func_ = present_func;
-        original_present_ = new_orig;
-
-        if (MH_EnableHook(present_func) != MH_OK) {
-            Log::warn("MH_EnableHook failed for Present on real swap chain");
-            present_func_ = nullptr;
-            original_present_ = nullptr;
-            return;
-        }
-
-        Log::info("D3D11 Present hook installed on real game swap chain");
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        Log::error("Exception in hook_swapchain_present: code={:08x}", GetExceptionCode());
-    }
-}
-
-// ─── Hooks ──────────────────────────────────────────────────────────────────
-
-HRESULT WINAPI D3D11Hook::create_device_and_swapchain_detour(
-    IDXGIAdapter* adapter, D3D_DRIVER_TYPE driver_type, HMODULE module,
-    UINT flags, const D3D_FEATURE_LEVEL* feature_levels, UINT num_levels,
-    UINT sdk_version, const DXGI_SWAP_CHAIN_DESC* swap_chain_desc,
-    IDXGISwapChain** swap_chain, ID3D11Device** device,
-    D3D_FEATURE_LEVEL* obtained_level, ID3D11DeviceContext** context)
-{
-    auto& self = instance();
-
-    HRESULT hr = self.original_create_device_and_swapchain_(
-        adapter, driver_type, module, flags,
-        feature_levels, num_levels, sdk_version,
-        swap_chain_desc, swap_chain, device,
-        obtained_level, context);
-
-    if (FAILED(hr)) return hr;
-
-    if (device && *device) {
-        if (self.device_) self.device_->Release();
-        self.device_ = *device;
-        self.device_->AddRef();
-    }
-    if (context && *context) {
-        if (self.context_) self.context_->Release();
-        self.context_ = *context;
-        self.context_->AddRef();
-    }
-    if (swap_chain && *swap_chain) {
-        if (self.captured_swap_chain_) self.captured_swap_chain_->Release();
-        self.captured_swap_chain_ = *swap_chain;
-        self.captured_swap_chain_->AddRef();
-        self.hook_swapchain_present(*swap_chain);
-    }
-
-    OutputDebugStringA("VRC: D3D11CreateDeviceAndSwapChain hook captured game device + swap chain\n");
-    Log::info("D3D11CreateDeviceAndSwapChain hook captured game device + swap chain");
-    return hr;
-}
-
-HRESULT WINAPI D3D11Hook::create_device_detour(
-    IDXGIAdapter* adapter, D3D_DRIVER_TYPE driver_type, HMODULE module,
-    UINT flags, const D3D_FEATURE_LEVEL* feature_levels, UINT num_levels,
-    UINT sdk_version, ID3D11Device** device,
-    D3D_FEATURE_LEVEL* obtained_level, ID3D11DeviceContext** context)
-{
-    auto& self = instance();
-
-    HRESULT hr = self.original_create_device_(
-        adapter, driver_type, module, flags,
-        feature_levels, num_levels, sdk_version,
-        device, obtained_level, context);
-
-    if (FAILED(hr)) return hr;
-
-    if (device && *device) {
-        if (self.device_) self.device_->Release();
-        self.device_ = *device;
-        self.device_->AddRef();
-    }
-    if (context && *context) {
-        if (self.context_) self.context_->Release();
-        self.context_ = *context;
-        self.context_->AddRef();
-    }
-
-    OutputDebugStringA("VRC: D3D11CreateDevice hook captured game device\n");
-    Log::info("D3D11CreateDevice hook captured game device");
-    return hr;
-}
+// ─── Present ────────────────────────────────────────────────────────────────
 
 HRESULT __stdcall D3D11Hook::present_detour(
     IDXGISwapChain* swap_chain, UINT sync_interval, UINT flags)
 {
-    // Guard: skip processing if swap_chain is invalid
-    if (!swap_chain) {
-        OutputDebugStringA("VRC: present_detour SKIP (null swap_chain)\n");
-        // Can't call original without swap_chain — just return S_OK
-        // (the real system Present would also crash with null)
-        return S_OK;
-    }
-
     auto& self = instance();
-    if (!self.hook_manager_) {
-        OutputDebugStringA("VRC: present_detour SKIP (null hook_manager_)\n");
-        PresentFn orig = self.original_present_;
-        return orig ? orig(swap_chain, sync_interval, flags) : S_OK;
+    InFlightGuard guard(self.in_flight_);
+    const PresentFn original = self.original_present_;
+
+    static std::atomic<bool> logged_first{false};
+    if (!logged_first.load(std::memory_order_relaxed) && !logged_first.exchange(true))
+        Log::info("First IDXGISwapChain::Present intercepted");
+
+    if (swap_chain) self.on_present(swap_chain);
+
+    const auto start = std::chrono::steady_clock::now();
+    const HRESULT hr = original(swap_chain, sync_interval, flags);
+    warn_if_slow(start, "Present");
+    return hr;
+}
+
+HRESULT __stdcall D3D11Hook::present1_detour(
+    IDXGISwapChain1* swap_chain, UINT sync_interval, UINT flags,
+    const DXGI_PRESENT_PARAMETERS* params)
+{
+    auto& self = instance();
+    InFlightGuard guard(self.in_flight_);
+    const Present1Fn original = self.original_present1_;
+
+    static std::atomic<bool> logged_first{false};
+    if (!logged_first.load(std::memory_order_relaxed) && !logged_first.exchange(true))
+        Log::info("First IDXGISwapChain1::Present1 intercepted");
+
+    if (swap_chain) self.on_present(swap_chain);
+
+    const auto start = std::chrono::steady_clock::now();
+    const HRESULT hr = original(swap_chain, sync_interval, flags, params);
+    warn_if_slow(start, "Present1");
+    return hr;
+}
+
+void D3D11Hook::on_present(IDXGISwapChain* swap_chain) {
+    if (tl_in_pipeline || !hook_manager_) return;
+
+    DXGI_SWAP_CHAIN_DESC desc = {};
+    if (FAILED(swap_chain->GetDesc(&desc))) return;
+    // Probe swap chains are 1x1 and never carry a game frame.
+    if (desc.BufferDesc.Width <= 4 || desc.BufferDesc.Height <= 4) return;
+
+    ThreadFlag in_pipeline(tl_in_pipeline);
+    std::lock_guard<std::mutex> lock(pipeline_mutex_);
+
+    // The swap chain's device is the source of truth for the API in use.
+    ID3D12Device* d3d12_device = nullptr;
+    if (SUCCEEDED(swap_chain->GetDevice(IID_PPV_ARGS(&d3d12_device)))) {
+        present_d3d12(swap_chain, d3d12_device, desc);
+        d3d12_device->Release();
+        return;
     }
-
-    auto& mgr = *self.hook_manager_;
-
-    // Find the correct original for THIS swap chain's Present address
-    void* sc_present = nullptr;
-    __try {
-        sc_present = (*reinterpret_cast<void***>(swap_chain))[8];
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        OutputDebugStringA("VRC: present_detour SKIP (AV reading vtable)\n");
-        PresentFn orig = self.original_present_;
-        return orig ? orig(swap_chain, sync_interval, flags) : S_OK;
+    ID3D11Device* d3d11_device = nullptr;
+    if (SUCCEEDED(swap_chain->GetDevice(IID_PPV_ARGS(&d3d11_device)))) {
+        present_d3d11(swap_chain, d3d11_device, desc);
+        d3d11_device->Release();
     }
+}
 
-    PresentFn original = self.original_present_;
-    if (sc_present != self.present_func_) {
-        for (auto& [addr, orig] : self.extra_present_hooks_) {
-            if (addr == sc_present) { original = orig; break; }
+void D3D11Hook::present_d3d11(IDXGISwapChain* swap_chain, ID3D11Device* device,
+                              const DXGI_SWAP_CHAIN_DESC& desc) {
+    // The D3D11 runtime rotates flip-model buffer identities, so buffer 0 is
+    // always the one being presented.
+    ID3D11Texture2D* back_buffer = nullptr;
+    if (FAILED(swap_chain->GetBuffer(0, IID_PPV_ARGS(&back_buffer)))) return;
+    D3D11_TEXTURE2D_DESC bb_desc = {};
+    back_buffer->GetDesc(&bb_desc);
+
+    select_frame_depth(device, bb_desc.Width, bb_desc.Height);
+
+    HookContext ctx;
+    ctx.api = GraphicsAPI::D3D11;
+    ctx.device = device;
+    ctx.swap_chain = swap_chain;
+    ctx.width = bb_desc.Width;
+    ctx.height = bb_desc.Height;
+    ctx.is_fullscreen = !desc.Windowed;
+    hook_manager_->fire_on_present(ctx);
+
+    FrameCapture capture;
+    capture.resource = back_buffer;
+    capture.width = bb_desc.Width;
+    capture.height = bb_desc.Height;
+    fill_depth_capture(capture);
+    hook_manager_->fire_on_frame(capture);
+
+    back_buffer->Release();
+}
+
+void D3D11Hook::present_d3d12(IDXGISwapChain* swap_chain, ID3D12Device* device,
+                              const DXGI_SWAP_CHAIN_DESC& desc) {
+    // D3D11On12 must submit on the game's DIRECT queue, which is only known
+    // once the game has called ExecuteCommandLists on it.
+    ID3D12CommandQueue* queue = D3D12Hook::instance().command_queue_for(device);
+    if (!queue) {
+        if (!logged_waiting_for_queue_) {
+            logged_waiting_for_queue_ = true;
+            Log::info("D3D12 swap chain presenting; skipping frames until the game's DIRECT "
+                      "command queue is seen");
         }
+        return;
     }
 
-    static bool first = true;
-    if (first) {
-        first = false;
-        Log::info("VRC: present_detour entered (first call) — vtable[8]={:p}, our_func={:p}",
-                  sc_present, self.present_func_);
-        OutputDebugStringA("VRC: present_detour first call\n");
-        char buf[256];
-        sprintf_s(buf, "VRC: vtable[8]=%p our_func=%p\n", sc_present, self.present_func_);
-        OutputDebugStringA(buf);
+    ID3D12Resource* back_buffer = nullptr;
+    IDXGISwapChain3* sc3 = nullptr;
+    if (SUCCEEDED(swap_chain->QueryInterface(IID_PPV_ARGS(&sc3)))) {
+        sc3->GetBuffer(sc3->GetCurrentBackBufferIndex(), IID_PPV_ARGS(&back_buffer));
+        sc3->Release();
     }
-
-    __try {
-        auto& ctx = mgr.context();
+    if (back_buffer) {
+        HookContext ctx;
+        ctx.api = GraphicsAPI::D3D12;
+        ctx.device = device;
         ctx.swap_chain = swap_chain;
+        ctx.command_queue = queue;
+        ctx.width = desc.BufferDesc.Width;
+        ctx.height = desc.BufferDesc.Height;
+        ctx.is_fullscreen = !desc.Windowed;
+        hook_manager_->fire_on_present(ctx);
 
-        // Try D3D12 first — some swap chains are D3D12
-        ID3D12Device* d3d12_dev = nullptr;
-        if (SUCCEEDED(swap_chain->GetDevice(IID_PPV_ARGS(&d3d12_dev)))) {
-            ctx.api = GraphicsAPI::D3D12;
-            ctx.device = d3d12_dev;
-            ctx.command_queue = D3D12Hook::instance().command_queue();
+        FrameCapture capture;
+        capture.resource = back_buffer;
+        capture.width = ctx.width;
+        capture.height = ctx.height;
+        hook_manager_->fire_on_frame(capture);
 
-            IDXGISwapChain3* sc3 = nullptr;
-            if (SUCCEEDED(swap_chain->QueryInterface(IID_PPV_ARGS(&sc3)))) {
-                u32 bb_idx = sc3->GetCurrentBackBufferIndex();
-                ID3D12Resource* bb = nullptr;
-                if (SUCCEEDED(swap_chain->GetBuffer(bb_idx, IID_PPV_ARGS(&bb)))) {
-                    DXGI_SWAP_CHAIN_DESC desc;
-                    swap_chain->GetDesc(&desc);
-                    ctx.width = desc.BufferDesc.Width;
-                    ctx.height = desc.BufferDesc.Height;
+        back_buffer->Release();
+    }
+    queue->Release();
+}
 
-                    mgr.fire_on_present(ctx);
+// ─── Depth capture ──────────────────────────────────────────────────────────
 
-                    FrameCapture capture{};
-                    capture.resource = bb;
-                    capture.width = ctx.width;
-                    capture.height = ctx.height;
-                    mgr.fire_on_frame(capture);
+void __stdcall D3D11Hook::omset_render_targets_detour(
+    ID3D11DeviceContext* context, UINT num_views,
+    ID3D11RenderTargetView* const* rtvs, ID3D11DepthStencilView* dsv)
+{
+    auto& self = instance();
+    InFlightGuard guard(self.in_flight_);
+    self.original_om_set_render_targets_(context, num_views, rtvs, dsv);
 
-                    bb->Release();
-                }
-                sc3->Release();
-            }
-            d3d12_dev->Release();
-        } else {
-            // D3D11 — get device from the swap chain itself
-            ID3D11Device* d3d11_dev = nullptr;
-            if (SUCCEEDED(swap_chain->GetDevice(IID_PPV_ARGS(&d3d11_dev)))) {
-                ctx.api = GraphicsAPI::D3D11;
-                ctx.device = d3d11_dev;
+    // This runs thousands of times per frame; keep the common path to a few
+    // compares. Depth-only passes (num_views == 0) still count.
+    if (!dsv || tl_in_om_detour) return;
+    const u64 frame = self.depth_frame_.load(std::memory_order_relaxed);
+    if (tl_depth_frame != frame) {
+        tl_depth_frame = frame;
+        tl_last_dsv = nullptr;
+    }
+    if (dsv == tl_last_dsv) return;
+    tl_last_dsv = dsv;
 
-                // Use GetCurrentBackBufferIndex for flip-model swap chains
-                u32 bb_idx = 0;
-                IDXGISwapChain3* sc3 = nullptr;
-                if (SUCCEEDED(swap_chain->QueryInterface(IID_PPV_ARGS(&sc3)))) {
-                    bb_idx = sc3->GetCurrentBackBufferIndex();
-                    sc3->Release();
-                }
+    ThreadFlag in_detour(tl_in_om_detour);
+    self.note_depth_bind(dsv);
+}
 
-                ID3D11Texture2D* back_buffer = nullptr;
-                if (SUCCEEDED(swap_chain->GetBuffer(bb_idx, IID_PPV_ARGS(&back_buffer)))) {
-                    D3D11_TEXTURE2D_DESC desc;
-                    back_buffer->GetDesc(&desc);
-                    ctx.width = desc.Width;
-                    ctx.height = desc.Height;
+void D3D11Hook::note_depth_bind(ID3D11DepthStencilView* dsv) {
+    std::lock_guard<std::mutex> lock(depth_mutex_);
+    // Nothing qualifies until a game Present has told us the device and size.
+    if (!depth_device_) return;
 
-                    mgr.fire_on_present(ctx);
+    auto it = dsv_cache_.find(dsv);
+    if (it == dsv_cache_.end()) {
+        if (dsv_cache_.size() >= kMaxCachedDsvs) return;
 
-                    FrameCapture capture{};
-                    capture.resource = back_buffer;
-                    capture.width = ctx.width;
-                    capture.height = ctx.height;
-                    mgr.fire_on_frame(capture);
+        DsvEntry entry;
+        ID3D11Device* view_device = nullptr;
+        dsv->GetDevice(&view_device);
+        // Views of other devices (our XR device, overlays) never qualify.
+        const bool game_device = view_device == depth_device_;
+        if (view_device) view_device->Release();
 
-                    back_buffer->Release();
-                }
-                d3d11_dev->Release();
-            }
+        ID3D11Resource* resource = nullptr;
+        dsv->GetResource(&resource);
+        ID3D11Texture2D* texture = nullptr;
+        if (resource) {
+            resource->QueryInterface(IID_PPV_ARGS(&texture));
+            resource->Release();
         }
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        Log::error("Exception in D3D11 Present detour: code={:08x}", GetExceptionCode());
+        if (texture) {
+            texture->GetDesc(&entry.desc);
+            entry.texture = texture;  // kept alive by the view we AddRef below
+            texture->Release();
+            // MSAA depth needs a resolve before it can be sampled, so skip it.
+            entry.qualifies = game_device && entry.desc.SampleDesc.Count == 1 &&
+                              matches_backbuffer(entry.desc, depth_bb_width_, depth_bb_height_);
+        }
+        dsv->AddRef();
+        it = dsv_cache_.emplace(dsv, entry).first;
     }
 
-    return original ? original(swap_chain, sync_interval, flags) : S_OK;
+    DsvEntry& entry = it->second;
+    if (entry.qualifies && entry.binds++ == 0) entry.first_bind = bind_sequence_++;
+}
+
+void D3D11Hook::select_frame_depth(ID3D11Device* device, u32 bb_width, u32 bb_height) {
+    {
+        std::lock_guard<std::mutex> lock(depth_mutex_);
+        select_frame_depth_locked(device, bb_width, bb_height);
+    }
+    release_pending();
+}
+
+void D3D11Hook::select_frame_depth_locked(ID3D11Device* device, u32 bb_width, u32 bb_height) {
+    if (device != depth_device_ || bb_width != depth_bb_width_ || bb_height != depth_bb_height_) {
+        // Every cached classification depends on the device and the size.
+        flush_dsv_cache_locked();
+        set_published_depth_locked(nullptr, nullptr);
+        if (depth_device_) pending_releases_.push_back(depth_device_);
+        depth_device_ = device;
+        depth_device_->AddRef();
+        depth_bb_width_ = bb_width;
+        depth_bb_height_ = bb_height;
+    } else {
+        // Publish the qualifying texture bound most often this frame; ties go
+        // to the larger texture, then to the one bound first. Several views
+        // can share one texture (e.g. read-only depth views), so sum per texture.
+        struct Tally { const DsvEntry* entry; u32 binds; u32 first_bind; };
+        std::vector<Tally> tallies;
+        for (const auto& [view, entry] : dsv_cache_) {
+            if (!entry.qualifies || !entry.binds) continue;
+            bool merged = false;
+            for (auto& t : tallies) {
+                if (t.entry->texture == entry.texture) {
+                    t.binds += entry.binds;
+                    if (entry.first_bind < t.first_bind) t.first_bind = entry.first_bind;
+                    merged = true;
+                    break;
+                }
+            }
+            if (!merged) tallies.push_back({ &entry, entry.binds, entry.first_bind });
+        }
+
+        const Tally* best = nullptr;
+        for (const auto& t : tallies) {
+            if (!best || t.binds > best->binds) { best = &t; continue; }
+            if (t.binds < best->binds) continue;
+            const u64 area = static_cast<u64>(t.entry->desc.Width) * t.entry->desc.Height;
+            const u64 best_area = static_cast<u64>(best->entry->desc.Width) * best->entry->desc.Height;
+            if (area > best_area || (area == best_area && t.first_bind < best->first_bind)) best = &t;
+        }
+        set_published_depth_locked(best ? best->entry->texture : nullptr,
+                                   best ? &best->entry->desc : nullptr);
+
+        for (auto& [view, entry] : dsv_cache_) entry.binds = 0;
+        if (++presents_since_flush_ >= kDsvCacheFlushInterval ||
+            dsv_cache_.size() >= kMaxCachedDsvs) {
+            flush_dsv_cache_locked();
+        }
+    }
+
+    bind_sequence_ = 0;
+    depth_frame_.fetch_add(1, std::memory_order_relaxed);
+}
+
+void D3D11Hook::set_published_depth_locked(ID3D11Texture2D* texture,
+                                           const D3D11_TEXTURE2D_DESC* desc) {
+    if (texture != published_depth_) {
+        if (texture) texture->AddRef();
+        if (published_depth_) pending_releases_.push_back(published_depth_);
+        published_depth_ = texture;
+
+        static int logged = 0;
+        if (texture && logged < 4) {
+            ++logged;
+            Log::info("Game depth buffer selected: {}x{} format {}",
+                      desc->Width, desc->Height, static_cast<u32>(desc->Format));
+        }
+    }
+    published_depth_desc_ = desc ? *desc : D3D11_TEXTURE2D_DESC{};
+}
+
+void D3D11Hook::flush_dsv_cache_locked() {
+    for (auto& [view, entry] : dsv_cache_) pending_releases_.push_back(view);
+    dsv_cache_.clear();
+    presents_since_flush_ = 0;
+}
+
+void D3D11Hook::release_pending() {
+    std::vector<IUnknown*> releases;
+    {
+        std::lock_guard<std::mutex> lock(depth_mutex_);
+        releases.swap(pending_releases_);
+    }
+    for (IUnknown* object : releases) object->Release();
+}
+
+void D3D11Hook::fill_depth_capture(FrameCapture& capture) {
+    std::lock_guard<std::mutex> lock(depth_mutex_);
+    if (!published_depth_) return;
+    // The consumer releases this reference exactly once.
+    published_depth_->AddRef();
+    capture.depth_texture = published_depth_;
+    capture.depth_width = published_depth_desc_.Width;
+    capture.depth_height = published_depth_desc_.Height;
+    capture.depth_format = static_cast<u32>(published_depth_desc_.Format);
+    capture.depth_sample_count = published_depth_desc_.SampleDesc.Count;
+}
+
+void D3D11Hook::release_depth_state() {
+    {
+        std::lock_guard<std::mutex> lock(depth_mutex_);
+        flush_dsv_cache_locked();
+        set_published_depth_locked(nullptr, nullptr);
+        if (depth_device_) pending_releases_.push_back(depth_device_);
+        depth_device_ = nullptr;
+        depth_bb_width_ = 0;
+        depth_bb_height_ = 0;
+        bind_sequence_ = 0;
+    }
+    release_pending();
 }
 
 } // namespace vrc

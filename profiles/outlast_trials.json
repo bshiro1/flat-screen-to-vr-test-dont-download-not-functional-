@@ -1,0 +1,82 @@
+{
+  "_note": "Outlast Trials 6DoF Bridge input profile. Phase-1 scaffold: publishes controller poses for vrc_outlast_mod.dll and keeps Legacy SendInput enabled. The game is always-online with EAC; use solo/private sessions only. See reports/Outlast Trials VR interaction plan.md.",
+  "bindings": [
+    {
+      "action": 8,
+      "deadzone": 0.5,
+      "source": "vr.right.button_a",
+      "vk_code": 32
+    },
+    {
+      "action": 9,
+      "deadzone": 0.5,
+      "source": "vr.right.button_b",
+      "vk_code": 81
+    },
+    {
+      "action": 10,
+      "deadzone": 0.5,
+      "source": "vr.left.thumbstick_click",
+      "vk_code": 160
+    },
+    {
+      "action": 11,
+      "deadzone": 0.5,
+      "source": "vr.left.button_y",
+      "vk_code": 70
+    },
+    {
+      "action": 17,
+      "deadzone": 0.5,
+      "source": "vr.left.button_x",
+      "vk_code": 9
+    },
+    {
+      "action": 15,
+      "deadzone": 0.5,
+      "source": "vr.left.menu",
+      "vk_code": 27
+    },
+    {
+      "action": 16,
+      "deadzone": 0.5,
+      "source": "vr.right.thumbstick_click",
+      "vk_code": 77
+    },
+    {
+      "action": 12,
+      "deadzone": 0.3,
+      "source": "vr.right.trigger",
+      "vk_code": 1
+    },
+    {
+      "action": 13,
+      "deadzone": 0.3,
+      "source": "vr.left.trigger",
+      "vk_code": 2
+    },
+    {
+      "action": 32,
+      "deadzone": 0.5,
+      "source": "vr.left.grab",
+      "vk_code": 81
+    },
+    {
+      "action": 33,
+      "deadzone": 0.5,
+      "source": "vr.right.grab",
+      "vk_code": 69
+    }
+  ],
+  "game": "TOTClient-Win64-Shipping.exe",
+  "head_aim": true,
+  "invert_x": false,
+  "invert_y": false,
+  "look_sensitivity": 1.0,
+  "movement_smoothing": 0.9700000286102295,
+  "name": "outlast_trials",
+  "snap_turn": true,
+  "snap_turn_angle": 45.0,
+  "snap_turn_mouse_pixels": 300,
+  "vignette_on_move": true
+}

@@ -1,938 +1,869 @@
 #include "openxr_context.h"
 #include "render/stereo_renderer.h"
+#include "render/reprojection_math.h"
 #include "input/xr_input.h"
 #include "input/input_mapper.h"
+#include "vr/tracking.h"
 #include "core/logging.h"
 #include "core/config.h"
-#include <openxr/openxr.h>
-#include <d3d11.h>
 #include <d3d11_4.h>
-#include <d3d12.h>
+#include <dxgi.h>
 #include <windows.h>
-#include <tlhelp32.h>
-#include <cassert>
+#include <algorithm>
+#include <cstring>
+#include <string>
 
 namespace vrc {
+
+template <typename T>
+static void safe_release(T*& p) {
+    if (p) { p->Release(); p = nullptr; }
+}
+
+static bool same_luid(const LUID& a, const LUID& b) {
+    return a.LowPart == b.LowPart && a.HighPart == b.HighPart;
+}
+
+static std::string narrow(const wchar_t* text) {
+    char buffer[256] = {};
+    WideCharToMultiByte(CP_UTF8, 0, text, -1, buffer, sizeof(buffer) - 1, nullptr, nullptr);
+    return buffer;
+}
+
+static const char* session_state_name(XrSessionState state) {
+    switch (state) {
+    case XR_SESSION_STATE_IDLE:         return "IDLE";
+    case XR_SESSION_STATE_READY:        return "READY";
+    case XR_SESSION_STATE_SYNCHRONIZED: return "SYNCHRONIZED";
+    case XR_SESSION_STATE_VISIBLE:      return "VISIBLE";
+    case XR_SESSION_STATE_FOCUSED:      return "FOCUSED";
+    case XR_SESSION_STATE_STOPPING:     return "STOPPING";
+    case XR_SESSION_STATE_LOSS_PENDING: return "LOSS_PENDING";
+    case XR_SESSION_STATE_EXITING:      return "EXITING";
+    default:                            return "UNKNOWN";
+    }
+}
+
+// Smaller of two limits where 0 means "no limit".
+static u32 min_limit(u32 a, u32 b) {
+    if (a == 0) return b;
+    if (b == 0) return a;
+    return std::min(a, b);
+}
 
 OpenXRContext& OpenXRContext::instance() {
     static OpenXRContext ctx;
     return ctx;
 }
 
+// ─── Lifetime ───────────────────────────────────────────────────────────────
+
 bool OpenXRContext::initialize(GraphicsAPI api) {
-    if (initialized_) return true;
-
-    Log::info("Initializing OpenXR context (API: {})", static_cast<int>(api));
-    graphics_api_ = api;
-
-    if (!create_instance()) return false;
-    if (!get_system()) return false;
-
-    initialized_ = true;
-    Log::info("OpenXR instance+system initialized (session deferred until device bound)");
+    if (initialized_.load()) return true;
+    Log::info("Initializing OpenXR (game API {}; the XR session always uses D3D11)",
+              static_cast<int>(api));
+    if (!create_instance() || !get_system()) {
+        destroy_instance();
+        return false;
+    }
+    initialized_.store(true, std::memory_order_release);
     return true;
 }
 
 void OpenXRContext::shutdown() {
-    if (!initialized_) return;
-
+    // The frame thread destroys the session and the renderer's XR-device
+    // resources as it exits.
     stop_frame_thread();
-
-    destroy_eye_rtvs();
-
-    if (local_space_) { xrDestroySpace(local_space_); local_space_ = XR_NULL_HANDLE; }
-    if (view_space_) { xrDestroySpace(view_space_); view_space_ = XR_NULL_HANDLE; }
-
-    for (auto& sc : swapchains_) {
-        if (sc.handle) {
-            if (graphics_api_ == GraphicsAPI::D3D11) {
-                for (auto& rtv : sc.d3d11_rtvs) {
-                    if (rtv) {
-                        static_cast<ID3D11RenderTargetView*>(rtv)->Release();
-                    }
-                }
-                sc.d3d11_rtvs.clear();
-            }
-            sc.d3d12_rtvs.clear();
-            xrDestroySwapchain(sc.handle);
-            sc.handle = XR_NULL_HANDLE;
-        }
-    }
-
-    if (d3d12_rtv_heap_) { d3d12_rtv_heap_->Release(); d3d12_rtv_heap_ = nullptr; }
-    d3d12_rtv_heap_size_ = 0;
-
-    if (session_) { xrDestroySession(session_); session_ = XR_NULL_HANDLE; }
-    if (instance_) { xrDestroyInstance(instance_); instance_ = XR_NULL_HANDLE; }
-
-    d3d11_device_ = nullptr;
-    d3d11_context_ = nullptr;
-    d3d12_device_ = nullptr;
-    d3d12_queue_ = nullptr;
-    device_bound_ = false;
-    session_created_ = false;
-    swapchains_created_ = false;
-    session_running_ = false;
-
-    if (frame_ready_event_) { CloseHandle(frame_ready_event_); frame_ready_event_ = nullptr; }
-    if (frame_done_event_) { CloseHandle(frame_done_event_); frame_done_event_ = nullptr; }
-
-    initialized_ = false;
-    Log::info("OpenXR shutdown complete");
+    destroy_session();
+    destroy_instance();
+    safe_release(xr_ctx_);
+    safe_release(xr_device_);
+    xr_adapter_luid_ = {};
+    device_bound_.store(false, std::memory_order_release);
+    if (initialized_.exchange(false)) Log::info("OpenXR shut down");
 }
-
-// ─── Real Device Binding ─────────────────────────────────────────────────────
 
 void OpenXRContext::bind_d3d11_device(ID3D11Device* device, ID3D11DeviceContext* ctx) {
-    if (device_bound_ && session_created_) return;
+    // One attempt only: dllmain retries binding on every Present while this is
+    // false, which would leak a context reference (or a D3D11On12 device) per
+    // frame if setup kept failing.
+    if (device_bound_.exchange(true)) return;
 
-    d3d11_device_ = device;
-    d3d11_context_ = ctx;
-    graphics_api_ = GraphicsAPI::D3D11;
-    device_bound_ = true;
-
-    // Enable D3D11 multithread protection so frame thread can safely flush
-    // (fails silently if device was created with D3D11_CREATE_DEVICE_SINGLETHREADED)
-    multithread_protected_ = false;
-    ID3D11Multithread* mt = nullptr;
-    if (SUCCEEDED(device->QueryInterface(IID_PPV_ARGS(&mt)))) {
-        multithread_protected_ = SUCCEEDED(mt->SetMultithreadProtected(TRUE));
-        mt->Release();
-        Log::info("D3D11 multithread protection: {}", multithread_protected_ ? "enabled" : "unavailable (singlethreaded device)");
-    }
-
-    Log::info("D3D11 device bound to OpenXR context");
-
-    // Also propagate device to StereoRenderer for rendering
-    auto& renderer = StereoRenderer::instance();
-    renderer.set_d3d11_device(device, ctx);
-
-    if (initialized_ && !session_created_) {
-        if (!ensure_session_created()) {
-            Log::error("Failed to create OpenXR session with D3D11 device, will retry");
-            device_bound_ = false;
-        }
-    }
-}
-
-void OpenXRContext::bind_d3d12_device(ID3D12Device* device, ID3D12CommandQueue* queue) {
-    if (device_bound_ && session_created_) return;
-
-    if (!device || !queue) {
-        Log::warn("bind_d3d12_device: device or queue is null, deferring");
-        d3d12_device_ = device;
-        d3d12_queue_ = queue;
+    // The renderer copies frames with the game device and owns the references
+    // handed over by dllmain, even if VR cannot start below.
+    StereoRenderer::instance().set_d3d11_device(device, ctx);
+    if (!device || !initialized_.load()) {
+        Log::error("bind_d3d11_device: {}", device ? "OpenXR is not initialized" : "no device");
         return;
     }
-
-    d3d12_device_ = device;
-    d3d12_queue_ = queue;
-    graphics_api_ = GraphicsAPI::D3D12;
-    device_bound_ = true;
-
-    Log::info("D3D12 device bound to OpenXR context");
-
-    if (initialized_ && !session_created_) {
-        if (!ensure_session_created()) {
-            Log::error("Failed to create OpenXR session with D3D12 device, will retry");
-            device_bound_ = false;
-        }
-    }
+    if (!create_xr_device(device)) return;
+    start_frame_thread();
 }
 
-void OpenXRContext::bind_swap_chain(void* swap_chain) {
-    bound_swap_chain_ = swap_chain;
-}
-
-bool OpenXRContext::ensure_session_created() {
-    if (session_created_) return true;
-    if (!device_bound_) return false;
-
-    Log::info("Creating OpenXR session with bound D3D device");
-
-    if (graphics_api_ == GraphicsAPI::D3D11 && d3d11_device_) {
-        PFN_xrGetD3D11GraphicsRequirementsKHR pfnGetReqs = nullptr;
-        xrGetInstanceProcAddr(instance_, "xrGetD3D11GraphicsRequirementsKHR",
-                              reinterpret_cast<PFN_xrVoidFunction*>(&pfnGetReqs));
-        if (pfnGetReqs) {
-            XrGraphicsRequirementsD3D11KHR gpuReqs = { XR_TYPE_GRAPHICS_REQUIREMENTS_D3D11_KHR };
-            XrResult reqRes = pfnGetReqs(instance_, system_id_, &gpuReqs);
-            if (XR_FAILED(reqRes)) {
-                Log::warn("xrGetD3D11GraphicsRequirementsKHR failed: {}", static_cast<int>(reqRes));
-            }
-        }
-
-        XrGraphicsBindingD3D11KHR binding = { XR_TYPE_GRAPHICS_BINDING_D3D11_KHR };
-        binding.device = d3d11_device_;
-
-        XrSessionCreateInfo sci = { XR_TYPE_SESSION_CREATE_INFO };
-        sci.systemId = system_id_;
-        sci.next = &binding;
-
-        XrResult res = xrCreateSession(instance_, &sci, &session_);
-        if (XR_FAILED(res)) {
-            Log::error("xrCreateSession (D3D11) failed: {}", static_cast<int>(res));
-            return false;
-        }
-        Log::info("OpenXR session created with real D3D11 device");
-    }
-    else if (graphics_api_ == GraphicsAPI::D3D12 && d3d12_device_ && d3d12_queue_) {
-        XrGraphicsBindingD3D12KHR binding = { XR_TYPE_GRAPHICS_BINDING_D3D12_KHR };
-        binding.device = d3d12_device_;
-        binding.queue = d3d12_queue_;
-
-        XrSessionCreateInfo sci = { XR_TYPE_SESSION_CREATE_INFO };
-        sci.systemId = system_id_;
-        sci.next = &binding;
-
-        XrResult res = xrCreateSession(instance_, &sci, &session_);
-        if (XR_FAILED(res)) {
-            Log::error("xrCreateSession (D3D12) failed: {}", static_cast<int>(res));
-            return false;
-        }
-        Log::info("OpenXR session created with real D3D12 device");
-    }
-    else {
-        Log::error("Cannot create session: device not properly bound");
+bool OpenXRContext::graphics_requirements(LUID& adapter_luid,
+                                          D3D_FEATURE_LEVEL& min_feature_level) {
+    PFN_xrGetD3D11GraphicsRequirementsKHR get_requirements = nullptr;
+    if (XR_FAILED(xrGetInstanceProcAddr(
+            instance_, "xrGetD3D11GraphicsRequirementsKHR",
+            reinterpret_cast<PFN_xrVoidFunction*>(&get_requirements))) ||
+        !get_requirements) {
+        Log::error("xrGetD3D11GraphicsRequirementsKHR is unavailable");
         return false;
     }
-
-    session_created_ = true;
-
-    if (!create_swapchains()) return false;
-    if (!create_reference_spaces()) return false;
-    if (!create_eye_rtvs()) return false;
-
-    // Initialize XR input action bindings before xrBeginSession is called
-    // (xrAttachSessionActionSets must happen before the session begins)
-    XrInput::instance().initialize(instance_, session_);
-
-    // Poll events once to catch READY state and call xrBeginSession
-    poll_events();
-
-    // Submit an empty kickstart frame to transition from SYNCHRONIZED → VISIBLE/FOCUSED.
-    // This must happen BEFORE the background frame thread takes over OpenXR calls,
-    // because xrWaitFrame blocks indefinitely in SYNCHRONIZED state on SteamVR.
-    if (session_running_) {
-        XrFrameWaitInfo fwi = { XR_TYPE_FRAME_WAIT_INFO };
-        XrFrameState fs = { XR_TYPE_FRAME_STATE };
-        if (d3d11_context_) d3d11_context_->Flush();
-        XrResult res = xrWaitFrame(session_, &fwi, &fs);
-        if (XR_SUCCEEDED(res)) {
-            XrFrameBeginInfo fbi = { XR_TYPE_FRAME_BEGIN_INFO };
-            res = xrBeginFrame(session_, &fbi);
-            if (XR_SUCCEEDED(res)) {
-                XrFrameEndInfo fei = { XR_TYPE_FRAME_END_INFO };
-                fei.displayTime = fs.predictedDisplayTime;
-                fei.environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
-                fei.layerCount = 0;
-                fei.layers = nullptr;
-                xrEndFrame(session_, &fei);
-                Log::info("Submitted empty kickstart frame");
-            }
-        }
+    XrGraphicsRequirementsD3D11KHR requirements{ XR_TYPE_GRAPHICS_REQUIREMENTS_D3D11_KHR };
+    const XrResult res = get_requirements(instance_, system_id_, &requirements);
+    if (XR_FAILED(res)) {
+        handle_result(res, "xrGetD3D11GraphicsRequirementsKHR", session_log_);
+        return false;
     }
-
-    // Create events for frame synchronization
-    frame_ready_event_ = CreateEventA(nullptr, FALSE, FALSE, nullptr);
-    frame_done_event_ = CreateEventA(nullptr, FALSE, FALSE, nullptr);
-
-    // Start the background OpenXR frame thread
-    start_frame_thread();
-
+    adapter_luid = requirements.adapterLuid;
+    min_feature_level = requirements.minFeatureLevel;
     return true;
 }
 
-// ─── Background Frame Thread ─────────────────────────────────────────────────
+bool OpenXRContext::create_xr_device(ID3D11Device* game_device) {
+    LUID required = {};
+    D3D_FEATURE_LEVEL min_level = D3D_FEATURE_LEVEL_11_0;
+    if (!graphics_requirements(required, min_level)) return false;
+
+    IDXGIDevice* dxgi_device = nullptr;
+    IDXGIAdapter* adapter = nullptr;
+    DXGI_ADAPTER_DESC adapter_desc = {};
+    if (FAILED(game_device->QueryInterface(IID_PPV_ARGS(&dxgi_device))) ||
+        FAILED(dxgi_device->GetAdapter(&adapter)) ||
+        FAILED(adapter->GetDesc(&adapter_desc))) {
+        Log::error("Cannot identify the game's GPU adapter");
+        safe_release(adapter);
+        safe_release(dxgi_device);
+        return false;
+    }
+    safe_release(dxgi_device);
+
+    const std::string adapter_name = narrow(adapter_desc.Description);
+    if (!same_luid(adapter_desc.AdapterLuid, required)) {
+        Log::error("The OpenXR runtime needs the GPU with adapter LUID {:08x}:{:08x}, but "
+                   "the game renders on '{}' (LUID {:08x}:{:08x}). Game frames cannot be "
+                   "shared across GPUs, so VR output is disabled. Run the game on the GPU "
+                   "the headset is connected to.",
+                   static_cast<u32>(required.HighPart), required.LowPart, adapter_name,
+                   static_cast<u32>(adapter_desc.AdapterLuid.HighPart),
+                   adapter_desc.AdapterLuid.LowPart);
+        adapter->Release();
+        return false;
+    }
+
+    const D3D_FEATURE_LEVEL levels[] = {
+        D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0,
+        D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_10_0,
+    };
+    D3D_FEATURE_LEVEL actual = D3D_FEATURE_LEVEL_10_0;
+    HRESULT hr = D3D11CreateDevice(adapter, D3D_DRIVER_TYPE_UNKNOWN, nullptr,
+                                   D3D11_CREATE_DEVICE_BGRA_SUPPORT, levels,
+                                   static_cast<UINT>(std::size(levels)), D3D11_SDK_VERSION,
+                                   &xr_device_, &actual, &xr_ctx_);
+    if (hr == E_INVALIDARG) {
+        // Pre-11.1 runtimes reject D3D_FEATURE_LEVEL_11_1 in the list.
+        hr = D3D11CreateDevice(adapter, D3D_DRIVER_TYPE_UNKNOWN, nullptr,
+                               D3D11_CREATE_DEVICE_BGRA_SUPPORT, levels + 1,
+                               static_cast<UINT>(std::size(levels) - 1), D3D11_SDK_VERSION,
+                               &xr_device_, &actual, &xr_ctx_);
+    }
+    adapter->Release();
+    if (FAILED(hr) || !xr_device_ || !xr_ctx_) {
+        Log::error("Failed to create the XR D3D11 device: 0x{:08x}", static_cast<u32>(hr));
+        safe_release(xr_ctx_);
+        safe_release(xr_device_);
+        return false;
+    }
+    if (actual < min_level) {
+        Log::error("The XR device reached feature level 0x{:x}, the runtime needs 0x{:x}",
+                   static_cast<u32>(actual), static_cast<u32>(min_level));
+        safe_release(xr_ctx_);
+        safe_release(xr_device_);
+        return false;
+    }
+
+    // Runtimes may touch the session device from their own threads. Protect
+    // the XR device only; the game's device is left alone.
+    ID3D11Multithread* multithread = nullptr;
+    if (SUCCEEDED(xr_device_->QueryInterface(IID_PPV_ARGS(&multithread)))) {
+        multithread->SetMultithreadProtected(TRUE);
+        multithread->Release();
+    }
+
+    xr_adapter_luid_ = required;
+    Log::info("XR D3D11 device created on '{}' (feature level 0x{:x})", adapter_name,
+              static_cast<u32>(actual));
+    return true;
+}
+
+// ─── Instance / system ──────────────────────────────────────────────────────
+
+bool OpenXRContext::create_instance() {
+    htcx_tracker_supported_ = false;
+    hand_tracking_supported_ = false;
+
+    u32 ext_count = 0;
+    if (XR_FAILED(xrEnumerateInstanceExtensionProperties(nullptr, 0, &ext_count, nullptr))) {
+        if (session_log_.should_log()) {
+            Log::error("No OpenXR runtime available (is the headset software running?)");
+        }
+        return false;
+    }
+    std::vector<XrExtensionProperties> available(ext_count, { XR_TYPE_EXTENSION_PROPERTIES });
+    xrEnumerateInstanceExtensionProperties(nullptr, ext_count, &ext_count, available.data());
+    auto has_extension = [&](const char* name) {
+        return std::any_of(available.begin(), available.end(), [&](const auto& ext) {
+            return strcmp(ext.extensionName, name) == 0;
+        });
+    };
+
+    if (!has_extension(XR_KHR_D3D11_ENABLE_EXTENSION_NAME)) {
+        Log::error("The active OpenXR runtime does not support XR_KHR_D3D11_enable");
+        return false;
+    }
+    // Only request what the runtime offers; an unavailable extension makes
+    // xrCreateInstance fail with XR_ERROR_EXTENSION_NOT_PRESENT.
+    std::vector<const char*> extensions{ XR_KHR_D3D11_ENABLE_EXTENSION_NAME };
+    if (has_extension(XR_HTCX_VIVE_TRACKER_INTERACTION_EXTENSION_NAME)) {
+        extensions.push_back(XR_HTCX_VIVE_TRACKER_INTERACTION_EXTENSION_NAME);
+        htcx_tracker_supported_ = true;
+    }
+    if (has_extension(XR_EXT_HAND_TRACKING_EXTENSION_NAME)) {
+        extensions.push_back(XR_EXT_HAND_TRACKING_EXTENSION_NAME);
+        hand_tracking_supported_ = true;
+    }
+
+    XrInstanceCreateInfo ci{ XR_TYPE_INSTANCE_CREATE_INFO };
+    strcpy_s(ci.applicationInfo.applicationName, "VR Game Converter");
+    ci.applicationInfo.applicationVersion = 1;
+    strcpy_s(ci.applicationInfo.engineName, "VR Converter Engine");
+    ci.applicationInfo.engineVersion = 1;
+    ci.applicationInfo.apiVersion = XR_MAKE_VERSION(1, 0, 0);
+    ci.enabledExtensionCount = static_cast<u32>(extensions.size());
+    ci.enabledExtensionNames = extensions.data();
+
+    const XrResult res = xrCreateInstance(&ci, &instance_);
+    if (XR_FAILED(res)) {
+        instance_ = XR_NULL_HANDLE;
+        if (session_log_.should_log()) Log::error("xrCreateInstance failed: {}", static_cast<int>(res));
+        return false;
+    }
+
+    XrInstanceProperties props{ XR_TYPE_INSTANCE_PROPERTIES };
+    xrGetInstanceProperties(instance_, &props);
+    Log::info("OpenXR runtime: {} v{}.{}.{} (HTCX trackers {}, hand tracking {})",
+              props.runtimeName, XR_VERSION_MAJOR(props.runtimeVersion),
+              XR_VERSION_MINOR(props.runtimeVersion), XR_VERSION_PATCH(props.runtimeVersion),
+              htcx_tracker_supported_ ? "yes" : "no", hand_tracking_supported_ ? "yes" : "no");
+    return true;
+}
+
+bool OpenXRContext::get_system() {
+    XrSystemGetInfo info{ XR_TYPE_SYSTEM_GET_INFO };
+    info.formFactor = form_factor_;
+    XrResult res = xrGetSystem(instance_, &info, &system_id_);
+    if (XR_FAILED(res)) {
+        system_id_ = XR_NULL_SYSTEM_ID;
+        if (session_log_.should_log()) {
+            Log::error("xrGetSystem failed ({}): is the headset connected and on?",
+                       static_cast<int>(res));
+        }
+        return false;
+    }
+
+    XrSystemProperties props{ XR_TYPE_SYSTEM_PROPERTIES };
+    if (XR_SUCCEEDED(xrGetSystemProperties(instance_, system_id_, &props))) {
+        max_swapchain_width_ = props.graphicsProperties.maxSwapchainImageWidth;
+        max_swapchain_height_ = props.graphicsProperties.maxSwapchainImageHeight;
+    }
+
+    u32 view_count = 0;
+    xrEnumerateViewConfigurationViews(instance_, system_id_, view_config_, 0, &view_count, nullptr);
+    std::vector<XrViewConfigurationView> views(view_count, { XR_TYPE_VIEW_CONFIGURATION_VIEW });
+    res = xrEnumerateViewConfigurationViews(instance_, system_id_, view_config_, view_count,
+                                            &view_count, views.data());
+    if (XR_FAILED(res) || view_count < 2) {
+        Log::error("The OpenXR system has no stereo view configuration");
+        return false;
+    }
+    eye_recommended_width_ = views[0].recommendedImageRectWidth;
+    eye_recommended_height_ = views[0].recommendedImageRectHeight;
+    eye_max_width_ = views[0].maxImageRectWidth;
+    eye_max_height_ = views[0].maxImageRectHeight;
+
+    Log::info("OpenXR system '{}': eye {}x{} recommended, swapchain max {}x{}",
+              props.systemName, eye_recommended_width_, eye_recommended_height_,
+              max_swapchain_width_, max_swapchain_height_);
+    return true;
+}
+
+void OpenXRContext::destroy_instance() {
+    if (instance_ != XR_NULL_HANDLE) xrDestroyInstance(instance_);
+    instance_ = XR_NULL_HANDLE;
+    system_id_ = XR_NULL_SYSTEM_ID;
+}
+
+// ─── Frame thread ───────────────────────────────────────────────────────────
 
 void OpenXRContext::start_frame_thread() {
     if (frame_thread_.joinable()) return;
-
-    thread_exit_flag_.store(false);
+    exit_flag_.store(false);
+    streaming_.store(true, std::memory_order_release);
     frame_thread_ = std::thread(&OpenXRContext::frame_thread_proc, this);
 }
 
 void OpenXRContext::stop_frame_thread() {
     if (!frame_thread_.joinable()) return;
-
-    thread_exit_flag_.store(true);
-
-    // Wake the frame thread if it's waiting
-    if (frame_done_event_) SetEvent(frame_done_event_);
-    if (frame_ready_event_) SetEvent(frame_ready_event_);
-
+    exit_flag_.store(true);
     frame_thread_.join();
+    streaming_.store(false, std::memory_order_release);
+}
+
+void OpenXRContext::sleep_interruptible(u32 ms) {
+    for (u32 slept = 0; slept < ms && !exit_flag_.load(); slept += 10) {
+        Sleep(std::min(10u, ms - slept));
+    }
 }
 
 void OpenXRContext::frame_thread_proc() {
-    Log::info("Frame thread started");
+    Log::info("OpenXR frame thread started");
 
-    // Wait for session to be running (READY state received → xrBeginSession)
-    while (!thread_exit_flag_.load()) {
+    // Recovery attempts (instance or session creation after a failure or a
+    // loss) back off 0.5 s, 1 s, 2 s, 4 s, then 8 s between tries.
+    u32 failures = 0;
+    auto back_off = [&]() {
+        sleep_interruptible(500u << std::min(failures, 4u));
+        ++failures;
+    };
+
+    while (!exit_flag_.load()) {
+        if (instance_lost_) {
+            Log::warn("OpenXR instance lost; recreating it");
+            destroy_session();
+            destroy_instance();
+            instance_lost_ = false;
+        }
+        if (instance_ == XR_NULL_HANDLE && (!create_instance() || !get_system())) {
+            destroy_instance();
+            back_off();
+            continue;
+        }
+        if (session_ == XR_NULL_HANDLE && !create_session()) {
+            back_off();
+            continue;
+        }
+
         poll_events();
-        if (session_running_) break;
-        Sleep(1);
-    }
-
-    // Poll events once more to catch any pending state transitions
-    poll_events();
-
-    u64 frame_count = 0;
-
-    // Main OpenXR frame loop
-    while (!thread_exit_flag_.load()) {
-        // Poll events before xrWaitFrame to catch state transitions
-        poll_events();
+        if (instance_lost_ || session_lost_) {
+            destroy_session();
+            back_off();
+            continue;
+        }
         if (!session_running_) {
-            Log::info("Session no longer running, stopping frame thread");
-            break;
+            // IDLE (e.g. headset in standby or after STOPPING): wait for READY.
+            sleep_interruptible(20);
+            continue;
         }
-
-        frame_count++;
-
-        // Wait for the next frame
-        XrFrameWaitInfo fwi = { XR_TYPE_FRAME_WAIT_INFO };
-        XrFrameState fs = { XR_TYPE_FRAME_STATE };
-        XrResult res = xrWaitFrame(session_, &fwi, &fs);
-
-        if (XR_FAILED(res) || thread_exit_flag_.load()) {
-            if (XR_FAILED(res)) Log::error("xrWaitFrame failed: {}", static_cast<int>(res));
-            break;
-        }
-
-        if (thread_exit_flag_.load()) break;
-
-        // Begin the frame
-        XrFrameBeginInfo fbi = { XR_TYPE_FRAME_BEGIN_INFO };
-        res = xrBeginFrame(session_, &fbi);
-        if (XR_FAILED(res)) {
-            Log::error("xrBeginFrame failed: {}", static_cast<int>(res));
-            break;
-        }
-
-        if (thread_exit_flag_.load()) break;
-
-        // Poll events (handles session state changes)
-        poll_events();
-        if (!session_running_) {
-            Log::info("Session no longer running, stopping frame thread");
-            break;
-        }
-
-        // Sync XR controller input (must run after xrBeginFrame, before xrEndFrame)
-        if (XrInput::instance().is_active()) {
-            XrInput::instance().sync(session_, local_space_,
-                                     fs.predictedDisplayTime);
-        }
-
-        // Translate controller state to game input (WASD / mouse / buttons)
-        {
-            f64 dt_ms = static_cast<f64>(fs.predictedDisplayPeriod) / 1'000'000.0;
-            InputMapper::instance().process_frame(dt_ms);
-        }
-
-        // Get head poses for this frame (must be on the frame thread)
-        XrViewLocateInfo vli = { XR_TYPE_VIEW_LOCATE_INFO };
-        vli.viewConfigurationType = view_config_;
-        vli.space = local_space_;
-        vli.displayTime = fs.predictedDisplayTime;
-
-        frame_data_.view_state = { XR_TYPE_VIEW_STATE };
-        frame_data_.views[0] = { XR_TYPE_VIEW };
-        frame_data_.views[1] = { XR_TYPE_VIEW };
-
-        u32 view_count = 2;
-        res = xrLocateViews(session_, &vli, &frame_data_.view_state,
-                            view_count, &view_count, frame_data_.views);
-        if (XR_FAILED(res)) {
-            Log::error("xrLocateViews failed: {}", static_cast<int>(res));
-        }
-
-        // Store frame state for Present thread
-        frame_data_.frame_state = fs;
-
-        // Acquire swapchain images for both eyes
-        for (int eye = 0; eye < 2; eye++) {
-            auto& sc = swapchains_[eye];
-
-            XrSwapchainImageAcquireInfo ai = { XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO };
-            u32 index = 0;
-            res = xrAcquireSwapchainImage(sc.handle, &ai, &index);
-            if (XR_FAILED(res)) {
-                Log::error("xrAcquireSwapchainImage eye {} failed: {}", eye, static_cast<int>(res));
-                frame_data_.acquired_eye_indices[eye] = 0;
-                continue;
-            }
-
-            XrSwapchainImageWaitInfo wi = { XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO };
-            wi.timeout = 500'000'000; // 500 ms in nanoseconds — avoids hanging if session is lost
-            res = xrWaitSwapchainImage(sc.handle, &wi);
-            if (XR_FAILED(res)) {
-                Log::error("xrWaitSwapchainImage eye {} failed: {}", eye, static_cast<int>(res));
-            }
-
-            frame_data_.acquired_eye_indices[eye] = index;
-        }
-
-        // Signal Present thread that images are ready
-        SetEvent(static_cast<HANDLE>(frame_ready_event_));
-
-        // Wait for Present thread to finish rendering (or signal a skip on timeout).
-        // Use a finite timeout so this thread can exit if the session is lost and
-        // the Present thread never calls end_frame (it times out at 25ms, signals
-        // frame_done, and returns — but if it already exited we'd hang forever here).
-        WaitForSingleObject(static_cast<HANDLE>(frame_done_event_), 2000);
-
-        if (thread_exit_flag_.load()) break;
-
-        bool rendered = frame_rendered_.load(std::memory_order_acquire);
-
-        // Release swapchain images
-        for (int eye = 0; eye < 2; eye++) {
-            auto& sc = swapchains_[eye];
-            XrSwapchainImageReleaseInfo ri = { XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO };
-            xrReleaseSwapchainImage(sc.handle, &ri);
-        }
-
-        // End the frame. When the Present thread timed out (begin_frame returned
-        // false), it signaled frame_done with rendered=false so we submit 0 layers
-        // rather than a projection layer referencing unrendered swapchain images.
-        XrFrameEndInfo fei = { XR_TYPE_FRAME_END_INFO };
-        fei.displayTime = fs.predictedDisplayTime;
-        fei.environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
-
-        if (rendered) {
-            XrCompositionLayerProjection layer = { XR_TYPE_COMPOSITION_LAYER_PROJECTION };
-            layer.space = local_space_;
-
-            XrCompositionLayerProjectionView proj_views[2] = {};
-            for (int eye = 0; eye < 2; eye++) {
-                auto& sc = swapchains_[eye];
-                proj_views[eye] = { XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW };
-                proj_views[eye].pose = frame_data_.views[eye].pose;
-                proj_views[eye].fov = frame_data_.views[eye].fov;
-                proj_views[eye].subImage.swapchain = sc.handle;
-                proj_views[eye].subImage.imageRect.offset = {0, 0};
-                proj_views[eye].subImage.imageRect.extent = { sc.width, sc.height };
-            }
-
-            layer.viewCount = 2;
-            layer.views = proj_views;
-
-            fei.layerCount = 1;
-            const XrCompositionLayerBaseHeader* layers[] = {
-                reinterpret_cast<const XrCompositionLayerBaseHeader*>(&layer) };
-            fei.layers = layers;
-
-            // Flush D3D11 commands so the compositor can see rendered content
-            // Only flush from frame thread when multithread protection is active
-            if (d3d11_context_ && multithread_protected_) d3d11_context_->Flush();
-        } else {
-            // Skipped frame (begin_frame timed out): submit blank frame so the
-            // compositor keeps its internal state consistent.
-            fei.layerCount = 0;
-            fei.layers = nullptr;
-        }
-
-        res = xrEndFrame(session_, &fei);
-        if (XR_FAILED(res)) {
-            Log::warn("xrEndFrame failed: {} (first frame often fails, non-fatal)", static_cast<int>(res));
-        }
+        if (run_frame()) failures = 0;
     }
 
-    Log::info("Frame thread stopped");
+    destroy_session();
+    StereoRenderer::instance().xr_release_resources();
+    Log::info("OpenXR frame thread stopped");
 }
 
-// ─── RTV Management ─────────────────────────────────────────────────────────
+bool OpenXRContext::create_session() {
+    if (!xr_device_) return false;
 
-bool OpenXRContext::create_eye_rtvs() {
-    if (!session_created_ || !swapchains_created_) return false;
-
-    if (graphics_api_ == GraphicsAPI::D3D11) {
-        for (u32 eye = 0; eye < 2; eye++) {
-            auto& sc = swapchains_[eye];
-            sc.d3d11_rtvs.clear();
-
-            for (size_t i = 0; i < sc.d3d11_images.size(); i++) {
-                ID3D11Texture2D* image = sc.d3d11_images[i].texture;
-                ID3D11RenderTargetView* rtv = nullptr;
-
-                D3D11_RENDER_TARGET_VIEW_DESC rtv_desc = {};
-                rtv_desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
-
-                // Try UNORM view first — game backbuffers are already gamma-encoded,
-                // so writing via SRGB RTV would double-apply gamma correction.
-                // Pimax typically creates textures as TYPELESS internally, which
-                // allows both UNORM and SRGB views.
-                static const DXGI_FORMAT kFmtOrder[] = {
-                    DXGI_FORMAT_R8G8B8A8_UNORM,
-                    DXGI_FORMAT_B8G8R8A8_UNORM,
-                    DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,
-                    DXGI_FORMAT_B8G8R8A8_UNORM_SRGB,
-                };
-                for (auto fmt : kFmtOrder) {
-                    rtv_desc.Format = fmt;
-                    if (d3d11_device_ && SUCCEEDED(d3d11_device_->CreateRenderTargetView(
-                            image, &rtv_desc, &rtv))) {
-                        if (i == 0) Log::info("Eye {} swapchain RTV format: {}", eye, static_cast<u32>(fmt));
-                        break;
-                    }
-                }
-                if (rtv) {
-                    sc.d3d11_rtvs.push_back(rtv);
-                } else {
-                    Log::error("Eye {} image {}: all RTV formats failed", eye, i);
-                }
-            }
-
-            if (!sc.d3d11_rtvs.empty()) {
-                eye_rtvs_[eye] = sc.d3d11_rtvs[0];
-                Log::info("Eye {} RTV created ({} images)", eye, sc.d3d11_rtvs.size());
-            }
+    // Required before xrCreateSession, for every instance.
+    LUID luid = {};
+    D3D_FEATURE_LEVEL min_level = D3D_FEATURE_LEVEL_11_0;
+    if (!graphics_requirements(luid, min_level)) return false;
+    if (!same_luid(luid, xr_adapter_luid_)) {
+        if (session_log_.should_log()) {
+            Log::error("The OpenXR runtime now requires a different GPU than the one the "
+                       "XR device was created on; restart the game");
         }
-    } else if (graphics_api_ == GraphicsAPI::D3D12 && d3d12_device_) {
-        // Count total RTVs needed
-        u32 total_rtvs = 0;
-        for (auto& sc : swapchains_) {
-            total_rtvs += (u32)sc.d3d12_images.size();
-        }
-
-        if (total_rtvs == 0) return false;
-
-        // Create RTV descriptor heap
-        D3D12_DESCRIPTOR_HEAP_DESC heap_desc = {};
-        heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-        heap_desc.NumDescriptors = total_rtvs;
-        heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-
-        if (d3d12_rtv_heap_) { d3d12_rtv_heap_->Release(); d3d12_rtv_heap_ = nullptr; }
-
-        if (FAILED(d3d12_device_->CreateDescriptorHeap(&heap_desc,
-                IID_PPV_ARGS(&d3d12_rtv_heap_)))) {
-            Log::error("Failed to create D3D12 RTV descriptor heap");
-            return false;
-        }
-        d3d12_rtv_heap_size_ = total_rtvs;
-
-        u32 heap_inc = d3d12_device_->GetDescriptorHandleIncrementSize(
-            D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-        D3D12_CPU_DESCRIPTOR_HANDLE rtv_handle = d3d12_rtv_heap_->GetCPUDescriptorHandleForHeapStart();
-
-        for (u32 eye = 0; eye < 2; eye++) {
-            auto& sc = swapchains_[eye];
-            sc.d3d12_rtvs.clear();
-
-            D3D12_RENDER_TARGET_VIEW_DESC rtv_desc = {};
-            rtv_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-            rtv_desc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
-
-            for (size_t i = 0; i < sc.d3d12_images.size(); i++) {
-                ID3D12Resource* image = sc.d3d12_images[i].texture;
-                d3d12_device_->CreateRenderTargetView(image, &rtv_desc, rtv_handle);
-                sc.d3d12_rtvs.push_back(rtv_handle);
-                rtv_handle.ptr += heap_inc;
-            }
-
-            if (!sc.d3d12_rtvs.empty()) {
-                eye_rtvs_[eye] = reinterpret_cast<void*>(sc.d3d12_rtvs[0].ptr);
-                Log::info("Eye {} D3D12 RTV created ({} images)", eye, sc.d3d12_rtvs.size());
-            }
-        }
-    }
-
-    return true;
-}
-
-void OpenXRContext::destroy_eye_rtvs() {
-    for (auto& sc : swapchains_) {
-        if (graphics_api_ == GraphicsAPI::D3D11) {
-            for (auto& rtv : sc.d3d11_rtvs) {
-                if (rtv) {
-                    static_cast<ID3D11RenderTargetView*>(rtv)->Release();
-                }
-            }
-            sc.d3d11_rtvs.clear();
-        }
-        sc.d3d12_rtvs.clear();
-    }
-    eye_rtvs_ = {};
-    if (d3d12_rtv_heap_) { d3d12_rtv_heap_->Release(); d3d12_rtv_heap_ = nullptr; }
-    d3d12_rtv_heap_size_ = 0;
-}
-
-// ─── OpenXR Instance / System ───────────────────────────────────────────────
-
-// ─── Pimax Runtime Detection ──────────────────────────────────────────────────
-
-static std::string detect_pimax_runtime_json() {
-    const char* pimax_json = "C:\\Program Files\\Pimax\\Runtime\\PiOpenXR_64.json";
-    if (GetFileAttributesA(pimax_json) == INVALID_FILE_ATTRIBUTES)
-        return {};
-
-    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (snap == INVALID_HANDLE_VALUE)
-        return {};
-
-    bool found = false;
-    PROCESSENTRY32W pe = { sizeof(pe) };
-    if (Process32FirstW(snap, &pe)) {
-        do {
-            if (_wcsicmp(pe.szExeFile, L"PiService.exe") == 0 ||
-                _wcsicmp(pe.szExeFile, L"pi_server.exe") == 0) {
-                found = true;
-                break;
-            }
-        } while (Process32NextW(snap, &pe));
-    }
-    CloseHandle(snap);
-    return found ? std::string(pimax_json) : std::string();
-}
-
-bool OpenXRContext::create_instance() {
-    // Auto-detect Pimax runtime if user hasn't explicitly set XR_RUNTIME_JSON
-    char* existing_runtime = nullptr;
-    size_t existing_sz = 0;
-    bool env_set = (_dupenv_s(&existing_runtime, &existing_sz, "XR_RUNTIME_JSON") == 0 && existing_runtime);
-    if (!env_set) {
-        auto pimax_json = detect_pimax_runtime_json();
-        if (!pimax_json.empty()) {
-            SetEnvironmentVariableA("XR_RUNTIME_JSON", pimax_json.c_str());
-        }
-    }
-    free(existing_runtime);
-
-    XrApplicationInfo app_info = {};
-    strcpy_s(app_info.applicationName, "VR Game Converter");
-    app_info.applicationVersion = 1;
-    strcpy_s(app_info.engineName, "VR Converter Engine");
-    app_info.engineVersion = 1;
-    app_info.apiVersion = XR_MAKE_VERSION(1, 0, 0);
-
-    std::vector<const char*> extensions;
-    extensions.push_back(XR_KHR_D3D11_ENABLE_EXTENSION_NAME);
-    if (graphics_api_ == GraphicsAPI::D3D12) {
-        extensions.push_back(XR_KHR_D3D12_ENABLE_EXTENSION_NAME);
-    }
-    extensions.push_back("XR_KHR_composition_layer_depth");
-
-    u32 ext_count = 0;
-    xrEnumerateInstanceExtensionProperties(nullptr, 0, &ext_count, nullptr);
-    std::vector<XrExtensionProperties> available(ext_count,
-        { XR_TYPE_EXTENSION_PROPERTIES });
-    xrEnumerateInstanceExtensionProperties(nullptr, ext_count, &ext_count,
-                                           available.data());
-
-    for (auto& ext : available) {
-        Log::debug("Available OpenXR extension: {}", ext.extensionName);
-    }
-
-    XrInstanceCreateInfo ci = { XR_TYPE_INSTANCE_CREATE_INFO };
-    ci.applicationInfo = app_info;
-    ci.enabledExtensionCount = (u32)extensions.size();
-    ci.enabledExtensionNames = extensions.data();
-
-    XrResult res = xrCreateInstance(&ci, &instance_);
-    if (XR_FAILED(res)) {
-        Log::error("xrCreateInstance failed: {}", static_cast<int>(res));
         return false;
     }
 
-    XrInstanceProperties ip = { XR_TYPE_INSTANCE_PROPERTIES };
-    xrGetInstanceProperties(instance_, &ip);
-    Log::info("OpenXR runtime: {} v{}.{}.{}",
-              ip.runtimeName,
-              XR_VERSION_MAJOR(ip.runtimeVersion),
-              XR_VERSION_MINOR(ip.runtimeVersion),
-              XR_VERSION_PATCH(ip.runtimeVersion));
-
-    return true;
-}
-
-bool OpenXRContext::get_system() {
-    XrSystemGetInfo sgi = { XR_TYPE_SYSTEM_GET_INFO };
-    sgi.formFactor = form_factor_;
-
-    XrResult res = xrGetSystem(instance_, &sgi, &system_id_);
+    XrGraphicsBindingD3D11KHR binding{ XR_TYPE_GRAPHICS_BINDING_D3D11_KHR };
+    binding.device = xr_device_;
+    XrSessionCreateInfo ci{ XR_TYPE_SESSION_CREATE_INFO };
+    ci.next = &binding;
+    ci.systemId = system_id_;
+    XrResult res = xrCreateSession(instance_, &ci, &session_);
     if (XR_FAILED(res)) {
-        Log::error("xrGetSystem failed: no HMD detected? ({})",
-                   static_cast<int>(res));
+        session_ = XR_NULL_HANDLE;
+        handle_result(res, "xrCreateSession", session_log_);
         return false;
     }
 
-    u32 view_count = 0;
-    xrEnumerateViewConfigurationViews(instance_, system_id_,
-                                      view_config_, 0, &view_count, nullptr);
-    std::vector<XrViewConfigurationView> views(
-        view_count, { XR_TYPE_VIEW_CONFIGURATION_VIEW });
-    xrEnumerateViewConfigurationViews(instance_, system_id_,
-                                      view_config_, view_count,
-                                      &view_count, views.data());
-
-    if (view_count >= 2) {
-        viewport_width_ = views[0].recommendedImageRectWidth;
-        viewport_height_ = views[0].recommendedImageRectHeight;
-    }
-
-    Log::info("OpenXR system acquired. Viewport: {}x{}",
-              viewport_width_, viewport_height_);
-    return true;
-}
-
-bool OpenXRContext::create_swapchains() {
-    if (!session_created_) return false;
-
-    u32 view_count = 0;
-    xrEnumerateViewConfigurationViews(instance_, system_id_,
-                                      view_config_, 0, &view_count, nullptr);
-    std::vector<XrViewConfigurationView> views(
-        view_count, { XR_TYPE_VIEW_CONFIGURATION_VIEW });
-    xrEnumerateViewConfigurationViews(instance_, system_id_,
-                                      view_config_, view_count,
-                                      &view_count, views.data());
-
-    for (u32 i = 0; i < view_count && i < 2; i++) {
-        auto& view = views[i];
-        auto& sc = swapchains_[i];
-
-        XrSwapchainCreateInfo sci = { XR_TYPE_SWAPCHAIN_CREATE_INFO };
-        sci.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT |
-                         XR_SWAPCHAIN_USAGE_SAMPLED_BIT |
-                         XR_SWAPCHAIN_USAGE_TRANSFER_DST_BIT;
-        sci.format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-        sci.sampleCount = 1;
-        sci.width = view.recommendedImageRectWidth;
-        sci.height = view.recommendedImageRectHeight;
-        sci.faceCount = 1;
-        sci.arraySize = 1;
-        sci.mipCount = 1;
-
-        XrResult res = xrCreateSwapchain(session_, &sci, &sc.handle);
-        if (XR_FAILED(res)) {
-            Log::error("xrCreateSwapchain for eye {} failed: {}",
-                       i, static_cast<int>(res));
-            return false;
-        }
-
-        sc.width = sci.width;
-        sc.height = sci.height;
-
-        u32 image_count = 0;
-        xrEnumerateSwapchainImages(sc.handle, 0, &image_count, nullptr);
-
-        if (graphics_api_ == GraphicsAPI::D3D11) {
-            sc.d3d11_images.resize(image_count,
-                { XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR });
-            xrEnumerateSwapchainImages(sc.handle, image_count, &image_count,
-                reinterpret_cast<XrSwapchainImageBaseHeader*>(sc.d3d11_images.data()));
-        } else if (graphics_api_ == GraphicsAPI::D3D12) {
-            sc.d3d12_images.resize(image_count,
-                { XR_TYPE_SWAPCHAIN_IMAGE_D3D12_KHR });
-            xrEnumerateSwapchainImages(sc.handle, image_count, &image_count,
-                reinterpret_cast<XrSwapchainImageBaseHeader*>(sc.d3d12_images.data()));
-        }
-
-        Log::info("Eye {} swapchain created: {}x{} ({} images)",
-                  i, sc.width, sc.height, image_count);
-    }
-
-    swapchains_created_ = true;
-    return true;
-}
-
-bool OpenXRContext::create_reference_spaces() {
-    if (!session_created_) return false;
-
-    XrReferenceSpaceCreateInfo sci = { XR_TYPE_REFERENCE_SPACE_CREATE_INFO };
-    sci.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_LOCAL;
-    sci.poseInReferenceSpace = { {0,0,0,1}, {0,0,0} };
-
-    XrResult res = xrCreateReferenceSpace(session_, &sci, &local_space_);
-    if (XR_FAILED(res)) {
-        Log::error("xrCreateReferenceSpace (local) failed: {}",
-                   static_cast<int>(res));
-        return false;
-    }
-
-    sci.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_STAGE;
-    XrSpace stage_space = XR_NULL_HANDLE;
-    res = xrCreateReferenceSpace(session_, &sci, &stage_space);
+    XrReferenceSpaceCreateInfo space_info{ XR_TYPE_REFERENCE_SPACE_CREATE_INFO };
+    space_info.poseInReferenceSpace.orientation.w = 1.0f;
+    space_info.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_LOCAL;
+    res = xrCreateReferenceSpace(session_, &space_info, &local_space_);
     if (XR_SUCCEEDED(res)) {
-        xrDestroySpace(stage_space);
-        Log::info("Room-scale (stage) space available");
+        space_info.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_VIEW;
+        res = xrCreateReferenceSpace(session_, &space_info, &view_space_);
+    }
+    if (XR_FAILED(res)) {
+        handle_result(res, "xrCreateReferenceSpace", session_log_);
+        destroy_session();
+        return false;
+    }
+    if (!choose_swapchain_format()) {
+        destroy_session();
+        return false;
     }
 
+    // Action sets must be attached before xrBeginSession.
+    XrInput::instance().configure_extensions(htcx_tracker_supported_, hand_tracking_supported_);
+    if (!XrInput::instance().initialize(instance_, session_)) {
+        Log::error("OpenXR input initialisation failed; retrying session setup");
+        destroy_session();
+        return false;
+    }
+
+    render_scale_ = std::clamp(Config::instance().current_profile().render_scale, 0.25f, 4.0f);
+    session_state_ = XR_SESSION_STATE_UNKNOWN;
+    session_running_ = false;
+    session_lost_ = false;
+    quad_has_image_ = false;
+    quad_generation_ = 0;
+    active_layer_ = -1;
+    Log::info("OpenXR session created (render scale {:.2f})", render_scale_);
     return true;
+}
+
+void OpenXRContext::destroy_session() {
+    if (session_ == XR_NULL_HANDLE) return;
+    // Input action spaces belong to this session.
+    XrInput::instance().shutdown();
+    destroy_swapchain(quad_);
+    destroy_swapchain(eyes_[0]);
+    destroy_swapchain(eyes_[1]);
+    if (view_space_ != XR_NULL_HANDLE) xrDestroySpace(view_space_);
+    if (local_space_ != XR_NULL_HANDLE) xrDestroySpace(local_space_);
+    view_space_ = XR_NULL_HANDLE;
+    local_space_ = XR_NULL_HANDLE;
+    xrDestroySession(session_);
+    session_ = XR_NULL_HANDLE;
+    session_state_ = XR_SESSION_STATE_UNKNOWN;
+    session_running_ = false;
+    session_lost_ = false;
+    swapchain_format_ = 0;
+    quad_has_image_ = false;
+    quad_generation_ = 0;
+    active_layer_ = -1;
+    Log::info("OpenXR session destroyed");
+}
+
+bool OpenXRContext::choose_swapchain_format() {
+    u32 count = 0;
+    xrEnumerateSwapchainFormats(session_, 0, &count, nullptr);
+    std::vector<i64> formats(count);
+    if (count == 0 ||
+        XR_FAILED(xrEnumerateSwapchainFormats(session_, count, &count, formats.data()))) {
+        Log::error("xrEnumerateSwapchainFormats returned no formats");
+        return false;
+    }
+
+    // The runtime lists formats in its order of preference; take its first
+    // match. sRGB first: the shaders write linear colour and the hardware
+    // encodes it, which is what OpenXR expects of an sRGB swapchain.
+    auto pick = [&](std::initializer_list<DXGI_FORMAT> wanted) {
+        for (i64 format : formats) {
+            for (DXGI_FORMAT w : wanted) {
+                if (format == static_cast<i64>(w)) {
+                    swapchain_format_ = format;
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+    if (pick({ DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, DXGI_FORMAT_B8G8R8A8_UNORM_SRGB })) {
+        Log::info("Swapchain format {} (sRGB)", swapchain_format_);
+        return true;
+    }
+    if (pick({ DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_B8G8R8A8_UNORM })) {
+        // OpenXR treats UNORM images as linear, so linear colour is still
+        // correct, just with 8-bit banding in dark areas.
+        Log::warn("No 8-bit sRGB swapchain format offered; using UNORM format {} "
+                  "(dark gradients may band)", swapchain_format_);
+        return true;
+    }
+    Log::error("None of the runtime's {} swapchain formats is supported", count);
+    return false;
+}
+
+bool OpenXRContext::create_swapchain(Swapchain& sc, u32 width, u32 height, const char* label) {
+    destroy_swapchain(sc);
+
+    XrSwapchainCreateInfo ci{ XR_TYPE_SWAPCHAIN_CREATE_INFO };
+    ci.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
+    ci.format = swapchain_format_;
+    ci.sampleCount = 1;
+    ci.width = width;
+    ci.height = height;
+    ci.faceCount = 1;
+    ci.arraySize = 1;
+    ci.mipCount = 1;
+    XrResult res = xrCreateSwapchain(session_, &ci, &sc.handle);
+    if (XR_FAILED(res)) {
+        sc.handle = XR_NULL_HANDLE;
+        handle_result(res, "xrCreateSwapchain", swapchain_log_);
+        return false;
+    }
+
+    u32 count = 0;
+    xrEnumerateSwapchainImages(sc.handle, 0, &count, nullptr);
+    std::vector<XrSwapchainImageD3D11KHR> images(count, { XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR });
+    res = xrEnumerateSwapchainImages(sc.handle, count, &count,
+                                     reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data()));
+    if (XR_FAILED(res) || count == 0) {
+        handle_result(res, "xrEnumerateSwapchainImages", swapchain_log_);
+        destroy_swapchain(sc);
+        return false;
+    }
+
+    D3D11_RENDER_TARGET_VIEW_DESC rtv_desc = {};
+    rtv_desc.Format = static_cast<DXGI_FORMAT>(swapchain_format_);
+    rtv_desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+    for (const auto& image : images) {
+        ID3D11RenderTargetView* rtv = nullptr;
+        if (FAILED(xr_device_->CreateRenderTargetView(image.texture, &rtv_desc, &rtv))) {
+            Log::error("{} swapchain: CreateRenderTargetView failed (format {})", label,
+                       swapchain_format_);
+            destroy_swapchain(sc);
+            return false;
+        }
+        sc.rtvs.push_back(rtv);
+    }
+    sc.width = width;
+    sc.height = height;
+    Log::info("{} swapchain created: {}x{} ({} images)", label, width, height, count);
+    return true;
+}
+
+void OpenXRContext::destroy_swapchain(Swapchain& sc) {
+    for (auto*& rtv : sc.rtvs) safe_release(rtv);
+    sc.rtvs.clear();
+    if (sc.handle != XR_NULL_HANDLE) xrDestroySwapchain(sc.handle);
+    sc.handle = XR_NULL_HANDLE;
+    sc.width = 0;
+    sc.height = 0;
+}
+
+bool OpenXRContext::acquire_image(Swapchain& sc, u32& index) {
+    XrSwapchainImageAcquireInfo acquire_info{ XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO };
+    XrResult res = xrAcquireSwapchainImage(sc.handle, &acquire_info, &index);
+    if (XR_FAILED(res)) {
+        handle_result(res, "xrAcquireSwapchainImage", swapchain_log_);
+        return false;
+    }
+
+    // A timeout is not an error: keep waiting, but stay responsive to exit.
+    // Only a successful wait makes the image writable and releasable; an
+    // image left acquired on exit is reclaimed when the swapchain is destroyed.
+    XrSwapchainImageWaitInfo wait_info{ XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO };
+    wait_info.timeout = 100'000'000;  // 100 ms
+    for (;;) {
+        res = xrWaitSwapchainImage(sc.handle, &wait_info);
+        if (res != XR_TIMEOUT_EXPIRED) break;
+        if (exit_flag_.load()) return false;
+        if (swapchain_log_.should_log()) {
+            Log::warn("xrWaitSwapchainImage timed out; still waiting (count={})",
+                      swapchain_log_.count);
+        }
+    }
+    if (XR_FAILED(res)) {
+        handle_result(res, "xrWaitSwapchainImage", swapchain_log_);
+        return false;
+    }
+    handle_result(res, "xrWaitSwapchainImage", swapchain_log_);  // XR_SESSION_LOSS_PENDING
+
+    if (index >= sc.rtvs.size()) {
+        Log::error("Swapchain image index {} out of range ({} images)", index, sc.rtvs.size());
+        release_image(sc);
+        return false;
+    }
+    return true;
+}
+
+bool OpenXRContext::release_image(Swapchain& sc) {
+    XrSwapchainImageReleaseInfo release_info{ XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO };
+    const XrResult res = xrReleaseSwapchainImage(sc.handle, &release_info);
+    if (XR_FAILED(res)) {
+        handle_result(res, "xrReleaseSwapchainImage", swapchain_log_);
+        return false;
+    }
+    return true;
+}
+
+void OpenXRContext::handle_result(XrResult result, const char* what, LogLimiter& limiter) {
+    if (result == XR_ERROR_INSTANCE_LOST) {
+        if (!instance_lost_) Log::warn("{}: OpenXR instance lost", what);
+        instance_lost_ = true;
+    } else if (result == XR_ERROR_SESSION_LOST || result == XR_SESSION_LOSS_PENDING) {
+        if (!session_lost_) {
+            Log::warn("{}: OpenXR session lost ({}); it will be recreated", what,
+                      static_cast<int>(result));
+        }
+        session_lost_ = true;
+    } else if (XR_FAILED(result) && limiter.should_log()) {
+        Log::warn("{} failed: {} (count={})", what, static_cast<int>(result), limiter.count);
+    }
 }
 
 void OpenXRContext::poll_events() {
-    XrEventDataBuffer event = { XR_TYPE_EVENT_DATA_BUFFER };
-    while (xrPollEvent(instance_, &event) == XR_SUCCESS) {
+    XrEventDataBuffer event{ XR_TYPE_EVENT_DATA_BUFFER };
+    for (;;) {
+        const XrResult res = xrPollEvent(instance_, &event);
+        if (res == XR_EVENT_UNAVAILABLE) break;
+        if (XR_FAILED(res)) {
+            handle_result(res, "xrPollEvent", event_log_);
+            break;
+        }
+
         switch (event.type) {
-            case XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED: {
-                auto& state = reinterpret_cast<XrEventDataSessionStateChanged&>(event);
-                Log::info("Session state changed to: {}",
-                          static_cast<int>(state.state));
+        case XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING:
+            Log::warn("OpenXR instance loss pending");
+            instance_lost_ = true;
+            break;
+        case XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED: {
+            const auto& changed =
+                *reinterpret_cast<const XrEventDataSessionStateChanged*>(&event);
+            if (changed.session != session_) break;
+            session_state_ = changed.state;
+            Log::info("OpenXR session state: {}", session_state_name(changed.state));
 
-                session_state_ = state.state;
-
-                if (state.state == XR_SESSION_STATE_READY) {
-                    XrSessionBeginInfo bi = { XR_TYPE_SESSION_BEGIN_INFO };
-                    bi.primaryViewConfigurationType = view_config_;
-                    XrResult r = xrBeginSession(session_, &bi);
-                    if (XR_SUCCEEDED(r)) {
-                        session_running_ = true;
-                        Log::info("OpenXR session begun");
-                    }
-                } else if (state.state == XR_SESSION_STATE_STOPPING) {
-                    xrEndSession(session_);
-                    session_running_ = false;
-                } else if (state.state == XR_SESSION_STATE_EXITING ||
-                           state.state == XR_SESSION_STATE_LOSS_PENDING) {
-                    session_running_ = false;
+            if (changed.state == XR_SESSION_STATE_READY) {
+                XrSessionBeginInfo begin_info{ XR_TYPE_SESSION_BEGIN_INFO };
+                begin_info.primaryViewConfigurationType = view_config_;
+                const XrResult begin = xrBeginSession(session_, &begin_info);
+                if (XR_SUCCEEDED(begin)) {
+                    session_running_ = true;
+                } else {
+                    handle_result(begin, "xrBeginSession", session_log_);
                 }
-                break;
-            }
-            case XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING:
+            } else if (changed.state == XR_SESSION_STATE_STOPPING) {
+                // Dashboard / standby: end the session and wait for READY again.
+                const XrResult end = xrEndSession(session_);
+                if (XR_FAILED(end)) handle_result(end, "xrEndSession", session_log_);
                 session_running_ = false;
-                break;
+            } else if (changed.state == XR_SESSION_STATE_EXITING ||
+                       changed.state == XR_SESSION_STATE_LOSS_PENDING) {
+                session_running_ = false;
+                session_lost_ = true;
+            }
+            break;
+        }
+        default:
+            break;
         }
         event = { XR_TYPE_EVENT_DATA_BUFFER };
     }
 }
 
-// ─── Frame Pipeline (Present Thread API) ────────────────────────────────────
-
-bool OpenXRContext::begin_frame() {
-    if (!session_created_) return false;
-    if (!session_running_) return false;
-    if (!frame_ready_event_) return false;
-
-    // Wait for frame thread to acquire swapchain images.
-    // 25ms timeout: if the compositor is stalled (headset inactive/sleeping),
-    // we unblock quickly so the flatscreen doesn't freeze.
-    DWORD wait = WaitForSingleObject(frame_ready_event_, 25);
-    if (wait != WAIT_OBJECT_0) {
-        // Signal frame_done so the frame thread is not left deadlocked waiting
-        // for a Present-thread signal that will never come this iteration.
-        frame_rendered_.store(false, std::memory_order_release);
-        if (frame_done_event_) SetEvent(static_cast<HANDLE>(frame_done_event_));
+bool OpenXRContext::run_frame() {
+    XrFrameWaitInfo wait_info{ XR_TYPE_FRAME_WAIT_INFO };
+    XrFrameState frame_state{ XR_TYPE_FRAME_STATE };
+    XrResult res = xrWaitFrame(session_, &wait_info, &frame_state);
+    if (XR_FAILED(res)) {
+        handle_result(res, "xrWaitFrame", frame_log_);
+        sleep_interruptible(10);  // a failing xrWaitFrame returns at once; don't spin
         return false;
     }
+    handle_result(res, "xrWaitFrame", frame_log_);  // XR_SESSION_LOSS_PENDING
 
-    return true;
-}
-
-bool OpenXRContext::end_frame() {
-    if (!session_created_) return false;
-    if (!frame_done_event_) return false;
-
-    // If multithread protection is unavailable (device created with SINGLETHREADED),
-    // flush from Present thread instead of frame thread to avoid race conditions
-    if (d3d11_context_ && !multithread_protected_) {
-        d3d11_context_->Flush();
-    }
-
-    // Mark this frame as rendered before signaling so the frame thread
-    // knows to submit a projection layer (vs. submitting 0 layers on a skipped frame).
-    frame_rendered_.store(true, std::memory_order_release);
-    SetEvent(static_cast<HANDLE>(frame_done_event_));
-    return true;
-}
-
-bool OpenXRContext::submit_frame() {
-    return end_frame();
-}
-
-f64 OpenXRContext::predicted_display_time() const {
-    // XrTime is in nanoseconds; callers expect milliseconds
-    return static_cast<f64>(frame_data_.frame_state.predictedDisplayTime) / 1'000'000.0;
-}
-
-bool OpenXRContext::acquire_eyes(EyeViews& views) {
-    if (!session_created_) return false;
-
-    // Read cached view data from last frame thread xrLocateViews call
-    for (i32 i = 0; i < 2; i++) {
-        auto& xr_view = frame_data_.views[i];
-        auto& v = (i == 0) ? views.left : views.right;
-
-        v.position = Vec3(
-            xr_view.pose.position.x,
-            xr_view.pose.position.y,
-            xr_view.pose.position.z
-        );
-        v.rotation = Quat(
-            xr_view.pose.orientation.x,
-            xr_view.pose.orientation.y,
-            xr_view.pose.orientation.z,
-            xr_view.pose.orientation.w
-        );
-        v.fov_horizontal = xr_view.fov.angleRight - xr_view.fov.angleLeft;
-        v.fov_vertical = xr_view.fov.angleDown - xr_view.fov.angleUp;
-    }
-
-    return true;
-}
-
-bool OpenXRContext::begin_eye_image(i32 eye, u32* out_image_index) {
-    if (eye < 0 || eye > 1) return false;
-    if (!session_created_) return false;
-
-    auto& sc = swapchains_[eye];
-
-    if (sc.image_acquired) {
-        if (out_image_index) *out_image_index = sc.acquired_index;
-        return true;
-    }
-
-    // Use the index already acquired by the frame thread
-    u32 index = frame_data_.acquired_eye_indices[eye];
-
-    if (graphics_api_ == GraphicsAPI::D3D11 && index >= sc.d3d11_rtvs.size()) {
-        Log::error("begin_eye_image: acquired index {} out of range for eye {} (rtvs={})",
-                   index, eye, sc.d3d11_rtvs.size());
+    XrFrameBeginInfo begin_info{ XR_TYPE_FRAME_BEGIN_INFO };
+    res = xrBeginFrame(session_, &begin_info);
+    if (XR_FAILED(res)) {
+        handle_result(res, "xrBeginFrame", frame_log_);
         return false;
     }
-    if (graphics_api_ == GraphicsAPI::D3D12 && index >= sc.d3d12_rtvs.size()) {
-        Log::error("begin_eye_image: acquired index {} out of range for eye {} (rtvs={})",
-                   index, eye, sc.d3d12_rtvs.size());
+    // XR_FRAME_DISCARDED only says an earlier frame was dropped; this frame
+    // has begun and is ended below like any other.
+
+    // Eye poses in LOCAL space. Depth3D renders with exactly these poses and
+    // FOVs and submits them unchanged.
+    XrViewLocateInfo locate_info{ XR_TYPE_VIEW_LOCATE_INFO };
+    locate_info.viewConfigurationType = view_config_;
+    locate_info.displayTime = frame_state.predictedDisplayTime;
+    locate_info.space = local_space_;
+    XrViewState view_state{ XR_TYPE_VIEW_STATE };
+    XrView views[2] = { { XR_TYPE_VIEW }, { XR_TYPE_VIEW } };
+    u32 view_count = 0;
+    res = xrLocateViews(session_, &locate_info, &view_state, 2, &view_count, views);
+    constexpr XrViewStateFlags kPoseValid =
+        XR_VIEW_STATE_POSITION_VALID_BIT | XR_VIEW_STATE_ORIENTATION_VALID_BIT;
+    const bool views_valid = XR_SUCCEEDED(res) && view_count == 2 &&
+                             (view_state.viewStateFlags & kPoseValid) == kPoseValid;
+    if (XR_FAILED(res)) {
+        handle_result(res, "xrLocateViews", locate_log_);
+    } else if (!views_valid && locate_log_.should_log()) {
+        Log::warn("xrLocateViews: eye poses not valid (flags 0x{:x}, count={})",
+                  view_state.viewStateFlags, locate_log_.count);
+    }
+
+    // Input: 6DoF bridge, controller actions and head-aim.
+    const auto view_flags = static_cast<XrSpaceLocationFlags>(view_state.viewStateFlags);
+    XrInput::instance().set_head_pose_from_views(views[0].pose, views[1].pose, view_flags);
+    XrInput::instance().set_frame_metrics(frame_state.predictedDisplayPeriod, views,
+                                          view_count, view_flags);
+    if (view_count == 2 && (view_state.viewStateFlags & XR_VIEW_STATE_ORIENTATION_VALID_BIT)) {
+        const XrPosef& l = views[0].pose;
+        const XrPosef& r = views[1].pose;
+        TrackingSystem::instance().set_head_pose(
+            Vec3((l.position.x + r.position.x) * 0.5f, (l.position.y + r.position.y) * 0.5f,
+                 (l.position.z + r.position.z) * 0.5f),
+            quat_slerp(Quat(l.orientation.x, l.orientation.y, l.orientation.z, l.orientation.w),
+                       Quat(r.orientation.x, r.orientation.y, r.orientation.z, r.orientation.w),
+                       0.5f),
+            static_cast<f64>(frame_state.predictedDisplayTime) / 1'000'000.0);
+    }
+    if (XrInput::instance().is_active()) {
+        XrInput::instance().sync(session_, local_space_, frame_state.predictedDisplayTime);
+    }
+    InputMapper::instance().process_frame(
+        static_cast<f64>(frame_state.predictedDisplayPeriod) / 1'000'000.0);
+
+    // Content.
+    XrCompositionLayerQuad quad{ XR_TYPE_COMPOSITION_LAYER_QUAD };
+    XrCompositionLayerProjection projection{ XR_TYPE_COMPOSITION_LAYER_PROJECTION };
+    XrCompositionLayerProjectionView projection_views[2] = {
+        { XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW },
+        { XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW },
+    };
+    const XrCompositionLayerBaseHeader* layer = nullptr;
+    int layer_kind = 0;  // 0 = none, 1 = Screen quad, 2 = Depth3D projection
+    if (frame_state.shouldRender && !exit_flag_.load()) {
+        auto& renderer = StereoRenderer::instance();
+        const auto source = renderer.xr_update_source(xr_device_, xr_ctx_);
+        if (source.has_color) {
+            const ConfigProfile cfg = Config::instance().current_profile();
+            const bool depth3d = cfg.render_mode == RenderMode::Depth3D &&
+                                 cfg.volumetric_parallax && source.has_depth && views_valid;
+            if (depth3d && render_projection_layer(cfg, views, projection, projection_views)) {
+                layer = reinterpret_cast<const XrCompositionLayerBaseHeader*>(&projection);
+                layer_kind = 2;
+            } else if (render_quad_layer(cfg, source.width, source.height,
+                                         source.color_generation, quad)) {
+                layer = reinterpret_cast<const XrCompositionLayerBaseHeader*>(&quad);
+                layer_kind = 1;
+            }
+            xr_ctx_->Flush();
+        }
+    }
+    if (layer_kind != active_layer_) {
+        active_layer_ = layer_kind;
+        static LogLimiter layer_log;
+        if (layer_log.should_log()) {
+            Log::info("Submitting {}", layer_kind == 2 ? "Depth3D projection layer"
+                                     : layer_kind == 1 ? "Screen quad layer"
+                                                       : "no layer (no game frame yet)");
+        }
+    }
+
+    XrFrameEndInfo end_info{ XR_TYPE_FRAME_END_INFO };
+    end_info.displayTime = frame_state.predictedDisplayTime;
+    end_info.environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
+    end_info.layerCount = layer ? 1 : 0;
+    end_info.layers = layer ? &layer : nullptr;
+    res = xrEndFrame(session_, &end_info);
+    if (XR_FAILED(res)) {
+        handle_result(res, "xrEndFrame", frame_log_);
         return false;
     }
-
-    sc.acquired_index = index;
-    sc.image_acquired = true;
-
-    if (out_image_index) *out_image_index = index;
-
-    if (graphics_api_ == GraphicsAPI::D3D11) {
-        eye_rtvs_[eye] = sc.d3d11_rtvs[index];
-    } else if (graphics_api_ == GraphicsAPI::D3D12 && index < sc.d3d12_rtvs.size()) {
-        eye_rtvs_[eye] = reinterpret_cast<void*>(sc.d3d12_rtvs[index].ptr);
-    }
-
     return true;
 }
 
-bool OpenXRContext::end_eye_image(i32 eye) {
-    if (eye < 0 || eye > 1) return false;
-    if (!session_created_) return false;
+bool OpenXRContext::render_quad_layer(const ConfigProfile& cfg, u32 source_width,
+                                      u32 source_height, u64 source_generation,
+                                      XrCompositionLayerQuad& layer) {
+    const reproj::Extent extent = reproj::fit_swapchain_extent(
+        source_width, source_height, render_scale_, max_swapchain_width_,
+        max_swapchain_height_);
+    if (quad_.handle == XR_NULL_HANDLE || quad_.width != extent.width ||
+        quad_.height != extent.height) {
+        quad_has_image_ = false;
+        if (!create_swapchain(quad_, extent.width, extent.height, "Screen")) return false;
+    }
 
-    auto& sc = swapchains_[eye];
-    sc.image_acquired = false;
+    // Write only when a new game frame arrived. Otherwise the layer is simply
+    // resubmitted: the runtime shows the most recently released image.
+    if (!quad_has_image_ || quad_generation_ != source_generation) {
+        u32 index = 0;
+        if (!acquire_image(quad_, index)) return false;
+        StereoRenderer::instance().xr_draw_screen(quad_.rtvs[index], quad_.width, quad_.height);
+        if (!release_image(quad_)) return false;
+        quad_has_image_ = true;
+        quad_generation_ = source_generation;
+    }
+
+    const reproj::ScreenQuad screen = reproj::screen_quad(
+        cfg.convergence_distance, cfg.fov_override, cfg.world_scale,
+        static_cast<f32>(source_width) / static_cast<f32>(std::max(source_height, 1u)));
+    layer.layerFlags = 0;
+    // World-locked screens live in LOCAL (eye level at the starting head
+    // position); head-locked screens in VIEW. Either way: straight ahead.
+    layer.space = cfg.enable_head_tracking ? local_space_ : view_space_;
+    layer.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+    layer.subImage.swapchain = quad_.handle;
+    layer.subImage.imageRect.offset = { 0, 0 };
+    layer.subImage.imageRect.extent = { static_cast<i32>(quad_.width),
+                                        static_cast<i32>(quad_.height) };
+    layer.subImage.imageArrayIndex = 0;
+    layer.pose.orientation = { 0.0f, 0.0f, 0.0f, 1.0f };
+    layer.pose.position = { 0.0f, 0.0f, -screen.distance };
+    layer.size = { screen.width, screen.height };
     return true;
 }
 
-void* OpenXRContext::eye_swapchain_image(i32 eye, u32 index) const {
-    if (eye < 0 || eye > 1) return nullptr;
-    auto& sc = swapchains_[eye];
-    if (graphics_api_ == GraphicsAPI::D3D11) {
-        if (index >= sc.d3d11_images.size()) return nullptr;
-        return sc.d3d11_images[index].texture;
-    } else if (graphics_api_ == GraphicsAPI::D3D12) {
-        if (index >= sc.d3d12_images.size()) return nullptr;
-        return sc.d3d12_images[index].texture;
+bool OpenXRContext::render_projection_layer(const ConfigProfile& cfg,
+                                            const XrView (&views)[2],
+                                            XrCompositionLayerProjection& layer,
+                                            XrCompositionLayerProjectionView (&layer_views)[2]) {
+    const reproj::Extent extent = reproj::fit_swapchain_extent(
+        eye_recommended_width_, eye_recommended_height_, render_scale_,
+        min_limit(eye_max_width_, max_swapchain_width_),
+        min_limit(eye_max_height_, max_swapchain_height_));
+    for (int eye = 0; eye < 2; ++eye) {
+        Swapchain& sc = eyes_[eye];
+        if (sc.handle == XR_NULL_HANDLE || sc.width != extent.width || sc.height != extent.height) {
+            if (!create_swapchain(sc, extent.width, extent.height,
+                                  eye == 0 ? "Left eye" : "Right eye")) {
+                return false;
+            }
+        }
     }
-    return nullptr;
+
+    // Depth3D re-renders every XR frame: the eye poses change even when the
+    // game frame does not.
+    auto& renderer = StereoRenderer::instance();
+    for (int eye = 0; eye < 2; ++eye) {
+        Swapchain& sc = eyes_[eye];
+        u32 index = 0;
+        if (!acquire_image(sc, index)) return false;
+        renderer.xr_draw_depth3d_eye(eye, views, cfg, sc.rtvs[index], sc.width, sc.height);
+        if (!release_image(sc)) return false;
+
+        XrCompositionLayerProjectionView& v = layer_views[eye];
+        v.pose = views[eye].pose;
+        v.fov = views[eye].fov;
+        v.subImage.swapchain = sc.handle;
+        v.subImage.imageRect.offset = { 0, 0 };
+        v.subImage.imageRect.extent = { static_cast<i32>(sc.width), static_cast<i32>(sc.height) };
+        v.subImage.imageArrayIndex = 0;
+    }
+    layer.layerFlags = 0;
+    layer.space = local_space_;
+    layer.viewCount = 2;
+    layer.views = layer_views;
+    return true;
 }
 
 } // namespace vrc

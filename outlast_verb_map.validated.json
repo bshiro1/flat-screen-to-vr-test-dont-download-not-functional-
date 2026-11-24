@@ -1,0 +1,738 @@
+{
+  "schema_version": 1,
+  "status": "reflection-validated",
+  "dispatch_allowed": true,
+  "scope": "solo/private only; never Invasion, matchmaking, or EAC bypass",
+  "build": {
+    "exe": "TOTClient-Win64-Shipping.exe",
+    "sha256": "D62DF76CE8CB1C58391FBC8A1649945BC91178D27DFAD2F98EAAB5C907D6F27E",
+    "image_base": "0x140000000"
+  },
+  "process_event": {
+    "rva": "0x1A2C750",
+    "va": "0x141A2C750",
+    "vtable_index": "0x44",
+    "vtable_offset": "0x220",
+    "status": "static-identified from exact PE; live vtable/FName validation still required"
+  },
+  "extraction": {
+    "method": "generated FClassRegistrationInfo FName blocks in exact installed PE",
+    "class_reg_call": "0x140B737D0",
+    "fname_ctor": "0x141A27610",
+    "caveat": "class ownership is static only; UFunction flags and parameter layouts remain unresolved"
+  },
+  "tiers": {
+    "tier1": "static class/function name bound in generated registration code; candidate only until live reflection confirms it",
+    "tier2": "notification or multicast-style name; do not treat as an authoritative call verb",
+    "unresolved": "no defensible static class/function binding found"
+  },
+  "candidates": [
+    {
+      "role": "generic_interact_start",
+      "tier": "tier1",
+      "class": "URBInteractFocusable",
+      "function": "StartInteraction",
+      "name_rva": "0x672EA96",
+      "emit_rva": "0x1481663",
+      "parameter_layout": "unresolved",
+      "note": "Core interact verb; needs live reflection and param layout before any dispatch.",
+      "symbols": [],
+      "reflection": {
+        "reflected_class": "RBInteractable",
+        "flags": "0x0C020C00",
+        "fname_index": null,
+        "function_rva": null,
+        "params_size": 16,
+        "parameters": [
+          {
+            "name": "interactorPawn",
+            "type": "class ARBPawn*",
+            "offset": 0,
+            "size": 8
+          },
+          {
+            "name": "ReturnValue",
+            "type": "bool",
+            "offset": 8,
+            "size": 1
+          }
+        ],
+        "layout_known": true,
+        "flags_known": true
+      },
+      "validated": true
+    },
+    {
+      "role": "generic_interact_end",
+      "tier": "tier1",
+      "class": "URBInteractFocusable",
+      "function": "EndInteraction",
+      "name_rva": "0x672ED64",
+      "emit_rva": "0x14814EC",
+      "parameter_layout": "unresolved",
+      "note": "Core interact release verb.",
+      "symbols": [],
+      "reflection": {
+        "reflected_class": "RBInteractable",
+        "flags": "0x0C020C00",
+        "fname_index": null,
+        "function_rva": null,
+        "params_size": 24,
+        "parameters": [
+          {
+            "name": "bPredicted",
+            "type": "bool",
+            "offset": 0,
+            "size": 1
+          },
+          {
+            "name": "interactorPawn",
+            "type": "class ARBPawn*",
+            "offset": 8,
+            "size": 8
+          },
+          {
+            "name": "bInterrupted",
+            "type": "bool",
+            "offset": 16,
+            "size": 1
+          },
+          {
+            "name": "ReturnValue",
+            "type": "bool",
+            "offset": 17,
+            "size": 1
+          }
+        ],
+        "layout_known": true,
+        "flags_known": true
+      },
+      "validated": true
+    },
+    {
+      "role": "generic_interact_check",
+      "tier": "tier1",
+      "class": "URBInteractFocusable",
+      "function": "IsInteractionPossible",
+      "name_rva": "0x67E136A",
+      "emit_rva": "0x1481582",
+      "parameter_layout": "unresolved",
+      "note": "Candidate focus-eligibility predicate; verify side effects before calling.",
+      "symbols": [],
+      "reflection": {
+        "reflected_class": "RBInteractable",
+        "flags": "0x5C020C00",
+        "fname_index": null,
+        "function_rva": null,
+        "params_size": 16,
+        "parameters": [
+          {
+            "name": "interactorPawn",
+            "type": "const class ARBPawn*",
+            "offset": 0,
+            "size": 8
+          },
+          {
+            "name": "ReturnValue",
+            "type": "bool",
+            "offset": 8,
+            "size": 1
+          }
+        ],
+        "layout_known": true,
+        "flags_known": true
+      },
+      "validated": true
+    },
+    {
+      "role": "custom_interact_exit",
+      "tier": "tier1",
+      "class": "ARBPlayer",
+      "function": "Server_ExitCustomInteractable",
+      "name_rva": "0x67E2436",
+      "emit_rva": "0x149C23E",
+      "parameter_layout": "unresolved",
+      "note": "Server RPC-shaped verb; replication authority must remain with the game.",
+      "symbols": [],
+      "reflection": {
+        "reflected_class": "RBPlayer",
+        "flags": "0x80220CC0",
+        "fname_index": null,
+        "function_rva": null,
+        "params_size": 8,
+        "parameters": [
+          {
+            "name": "customInteractable",
+            "type": "class ARBCustomSpecialMoveInteractableActor*",
+            "offset": 0,
+            "size": 8
+          }
+        ],
+        "layout_known": true,
+        "flags_known": true
+      },
+      "validated": true
+    },
+    {
+      "role": "door_interact_event",
+      "tier": "tier2",
+      "class": "ARBDoor",
+      "function": "BP_OnDoorInteract",
+      "name_rva": "0x664FF28",
+      "emit_rva": "0x146A3C6",
+      "parameter_layout": "unresolved",
+      "note": "Likely notification/event; do not call as authority without live validation.",
+      "symbols": [],
+      "reflection": {
+        "reflected_class": "RBDoor",
+        "flags": "0x08020800",
+        "fname_index": null,
+        "function_rva": null,
+        "params_size": 8,
+        "parameters": [
+          {
+            "name": "interactor",
+            "type": "class ARBPawn*",
+            "offset": 0,
+            "size": 8
+          }
+        ],
+        "layout_known": true,
+        "flags_known": true
+      },
+      "validated": true
+    },
+    {
+      "role": "door_interact_multicast",
+      "tier": "tier2",
+      "class": "ARBDoor",
+      "function": "Multicast_OnDoorInteract",
+      "name_rva": "0x664FEF6",
+      "emit_rva": "0x146A4A7",
+      "parameter_layout": "unresolved",
+      "note": "Multicast notification, not a safe client authority verb.",
+      "symbols": [],
+      "reflection": {
+        "reflected_class": "RBDoor",
+        "flags": "0x00024CC0",
+        "fname_index": null,
+        "function_rva": null,
+        "params_size": 16,
+        "parameters": [
+          {
+            "name": "newDoorDesiredAngle",
+            "type": "float",
+            "offset": 0,
+            "size": 4
+          },
+          {
+            "name": "newDoorAngleSpeedRatio",
+            "type": "float",
+            "offset": 4,
+            "size": 4
+          },
+          {
+            "name": "Pawn",
+            "type": "class ARBPawn*",
+            "offset": 8,
+            "size": 8
+          }
+        ],
+        "layout_known": true,
+        "flags_known": true
+      },
+      "validated": true
+    },
+    {
+      "role": "door_operation_rpc",
+      "tier": "tier1",
+      "class": "ARBPlayer",
+      "function": "Multicast_StartDoorOperation",
+      "name_rva": "0x6734E24",
+      "emit_rva": "0x149BE3D",
+      "parameter_layout": "unresolved",
+      "note": "Player-side door operation candidate.",
+      "symbols": [],
+      "reflection": {
+        "reflected_class": "RBPlayer",
+        "flags": "0x00024CC0",
+        "fname_index": null,
+        "function_rva": null,
+        "params_size": 8,
+        "parameters": [
+          {
+            "name": "door",
+            "type": "class ARBDoor*",
+            "offset": 0,
+            "size": 8
+          }
+        ],
+        "layout_known": true,
+        "flags_known": true
+      },
+      "validated": true
+    },
+    {
+      "role": "door_bash_rpc",
+      "tier": "tier1",
+      "class": "ARBPawn",
+      "function": "Multicast_StartBashDoor",
+      "name_rva": "0x66EED6A",
+      "emit_rva": "0x1498A24",
+      "parameter_layout": "unresolved",
+      "note": "Bash candidate; verify it is a callable verb and not an animation notification.",
+      "symbols": [],
+      "reflection": {
+        "reflected_class": "RBPawn",
+        "flags": "0x00824CC0",
+        "fname_index": null,
+        "function_rva": null,
+        "params_size": 24,
+        "parameters": [
+          {
+            "name": "door",
+            "type": "class ARBDoor*",
+            "offset": 0,
+            "size": 8
+          },
+          {
+            "name": "bashType",
+            "type": "EBashDoorType",
+            "offset": 8,
+            "size": 1
+          },
+          {
+            "name": "bPredicted",
+            "type": "bool",
+            "offset": 9,
+            "size": 1
+          },
+          {
+            "name": "startCharLocation",
+            "type": "struct FVector",
+            "offset": 12,
+            "size": 12
+          }
+        ],
+        "layout_known": true,
+        "flags_known": true
+      },
+      "validated": true
+    },
+    {
+      "role": "item_pickup",
+      "tier": "tier1",
+      "class": "ARBPlayer",
+      "function": "Multicast_DoItemPickup",
+      "name_rva": "0x671054C",
+      "emit_rva": "0x149BA23",
+      "parameter_layout": "unresolved",
+      "note": "Inventory remains authoritative; this is only a translated verb candidate.",
+      "symbols": [],
+      "reflection": {
+        "reflected_class": "RBPlayer",
+        "flags": "0x00024CC0",
+        "fname_index": null,
+        "function_rva": null,
+        "params_size": 8,
+        "parameters": [
+          {
+            "name": "pickupItem",
+            "type": "class ARBPickup*",
+            "offset": 0,
+            "size": 8
+          }
+        ],
+        "layout_known": true,
+        "flags_known": true
+      },
+      "validated": true
+    },
+    {
+      "role": "item_drop",
+      "tier": "tier1",
+      "class": "ARBPlayer",
+      "function": "Server_TryDropItem",
+      "name_rva": "0x674E2A6",
+      "emit_rva": "0x149C47D",
+      "parameter_layout": "unresolved",
+      "note": "Server RPC-shaped verb.",
+      "symbols": [],
+      "reflection": {
+        "reflected_class": "RBPlayer",
+        "flags": "0x00220CC0",
+        "fname_index": null,
+        "function_rva": null,
+        "params_size": 8,
+        "parameters": [
+          {
+            "name": "Item",
+            "type": "class ARBPickup*",
+            "offset": 0,
+            "size": 8
+          }
+        ],
+        "layout_known": true,
+        "flags_known": true
+      },
+      "validated": true
+    },
+    {
+      "role": "item_equip",
+      "tier": "tier1",
+      "class": "ARBPlayer",
+      "function": "Server_SetEquippedInventoryItem",
+      "name_rva": "0x674DF40",
+      "emit_rva": "0x149C31F",
+      "parameter_layout": "unresolved",
+      "note": "Equip candidate; parameter object/reference still unknown.",
+      "symbols": [],
+      "reflection": {
+        "reflected_class": "RBPlayer",
+        "flags": "0x80220CC0",
+        "fname_index": null,
+        "function_rva": null,
+        "params_size": 8,
+        "parameters": [
+          {
+            "name": "Item",
+            "type": "class ARBPickup*",
+            "offset": 0,
+            "size": 8
+          }
+        ],
+        "layout_known": true,
+        "flags_known": true
+      },
+      "validated": true
+    },
+    {
+      "role": "large_object_pickup",
+      "tier": "tier1",
+      "class": "ARBPlayer",
+      "function": "Multicast_PickupLargeObject",
+      "name_rva": "0x664EA68",
+      "emit_rva": "0x149BC62",
+      "parameter_layout": "unresolved",
+      "note": "Large-object carry candidate.",
+      "symbols": [],
+      "reflection": {
+        "reflected_class": "RBPlayer",
+        "flags": "0x00824CC0",
+        "fname_index": null,
+        "function_rva": null,
+        "params_size": 40,
+        "parameters": [
+          {
+            "name": "largePickup",
+            "type": "class ARBLargePickup*",
+            "offset": 0,
+            "size": 8
+          },
+          {
+            "name": "Location",
+            "type": "struct FVector",
+            "offset": 8,
+            "size": 12
+          },
+          {
+            "name": "Forward",
+            "type": "struct FVector",
+            "offset": 20,
+            "size": 12
+          },
+          {
+            "name": "subtype",
+            "type": "EObjectPickupSubtype",
+            "offset": 32,
+            "size": 1
+          }
+        ],
+        "layout_known": true,
+        "flags_known": true
+      },
+      "validated": true
+    },
+    {
+      "role": "large_object_putdown",
+      "tier": "tier1",
+      "class": "ARBPlayer",
+      "function": "Multicast_PutDownLargeObject",
+      "name_rva": "0x664EAA0",
+      "emit_rva": "0x149BC94",
+      "parameter_layout": "unresolved",
+      "note": "Large-object release candidate.",
+      "symbols": [],
+      "reflection": {
+        "reflected_class": "RBPlayer",
+        "flags": "0x00824CC0",
+        "fname_index": null,
+        "function_rva": null,
+        "params_size": 64,
+        "parameters": [
+          {
+            "name": "largePickup",
+            "type": "class ARBLargePickup*",
+            "offset": 0,
+            "size": 8
+          },
+          {
+            "name": "Location",
+            "type": "struct FVector",
+            "offset": 8,
+            "size": 12
+          },
+          {
+            "name": "Rotation",
+            "type": "struct FQuat",
+            "offset": 32,
+            "size": 16
+          },
+          {
+            "name": "bPredicted",
+            "type": "bool",
+            "offset": 48,
+            "size": 1
+          }
+        ],
+        "layout_known": true,
+        "flags_known": true
+      },
+      "validated": true
+    },
+    {
+      "role": "hold_consume_notification",
+      "tier": "tier2",
+      "class": "ARBBandagePickup",
+      "function": "BP_OnStartHoldConsumeAction",
+      "name_rva": "0x672FFD0",
+      "emit_rva": "0x145506C",
+      "parameter_layout": "unresolved",
+      "note": "Also appears on ARBDeployablePickup and ARBImposterTrap; likely a notification, not a start verb.",
+      "symbols": [],
+      "reflection": {
+        "reflected_class": "RBBandagePickup",
+        "flags": "0x08080800",
+        "fname_index": null,
+        "function_rva": null,
+        "params_size": 8,
+        "parameters": [
+          {
+            "name": "Pawn",
+            "type": "class ARBPawn*",
+            "offset": 0,
+            "size": 8
+          }
+        ],
+        "layout_known": true,
+        "flags_known": true
+      },
+      "validated": true
+    },
+    {
+      "role": "panel_child_value",
+      "tier": "tier1",
+      "class": "ARBPlayer",
+      "function": "Server_SetInteractiblePanelChildValue",
+      "name_rva": "0x67A829A",
+      "emit_rva": "0x149C351",
+      "parameter_layout": "unresolved",
+      "note": "Generic interactable-panel child value candidate.",
+      "symbols": [],
+      "reflection": {
+        "reflected_class": "RBPlayer",
+        "flags": "0x00220CC0",
+        "fname_index": null,
+        "function_rva": null,
+        "params_size": 16,
+        "parameters": [
+          {
+            "name": "panelChild",
+            "type": "class URBInteractibleComponent*",
+            "offset": 0,
+            "size": 8
+          },
+          {
+            "name": "Value",
+            "type": "float",
+            "offset": 8,
+            "size": 4
+          }
+        ],
+        "layout_known": true,
+        "flags_known": true
+      },
+      "validated": true
+    },
+    {
+      "role": "switch_panel_value",
+      "tier": "tier1",
+      "class": "ARBPlayer",
+      "function": "Server_SetSwitchPanelPartDesiredStatusValue",
+      "name_rva": "0x67A7412",
+      "emit_rva": "0x149C3CE",
+      "parameter_layout": "unresolved",
+      "note": "Switch/fusebox candidate; enum value layout unknown.",
+      "symbols": [],
+      "reflection": {
+        "reflected_class": "RBPlayer",
+        "flags": "0x00220CC0",
+        "fname_index": null,
+        "function_rva": null,
+        "params_size": 16,
+        "parameters": [
+          {
+            "name": "panelPart",
+            "type": "class ARBSwitchPanelPart*",
+            "offset": 0,
+            "size": 8
+          },
+          {
+            "name": "Value",
+            "type": "float",
+            "offset": 8,
+            "size": 4
+          }
+        ],
+        "layout_known": true,
+        "flags_known": true
+      },
+      "validated": true
+    },
+    {
+      "role": "panel_stop",
+      "tier": "tier1",
+      "class": "ARBPlayer",
+      "function": "Server_StopInteractingWithPanelChild",
+      "name_rva": "0x680E828",
+      "emit_rva": "0x149C419",
+      "parameter_layout": "unresolved",
+      "note": "Panel release candidate.",
+      "symbols": [],
+      "reflection": {
+        "reflected_class": "RBPlayer",
+        "flags": "0x80220CC0",
+        "fname_index": null,
+        "function_rva": null,
+        "params_size": 0,
+        "parameters": [],
+        "layout_known": true,
+        "flags_known": true
+      },
+      "validated": true
+    },
+    {
+      "role": "pump_multicast",
+      "tier": "tier2",
+      "class": "URBMallTorturePumpComponent",
+      "function": "Multicast_Pump",
+      "name_rva": "0x6711E20",
+      "emit_rva": "0x148C308",
+      "parameter_layout": "unresolved",
+      "note": "Specific Mall Torture pump; likely presentation multicast.",
+      "symbols": [],
+      "reflection": {
+        "reflected_class": "RBMallTorturePumpComponent",
+        "flags": "0x00024CC0",
+        "fname_index": null,
+        "function_rva": null,
+        "params_size": 0,
+        "parameters": [],
+        "layout_known": true,
+        "flags_known": true
+      },
+      "validated": true
+    },
+    {
+      "role": "hidespot_peek_notification",
+      "tier": "tier2",
+      "class": "ARBNPC",
+      "function": "Multicast_StartHidespotPeeking",
+      "name_rva": "0x6785EFE",
+      "emit_rva": "0x1492795",
+      "parameter_layout": "unresolved",
+      "note": "Notification on NPC class, not a player enter-hide verb.",
+      "symbols": [],
+      "reflection": {
+        "reflected_class": "RBNPC",
+        "flags": "0x00024CC0",
+        "fname_index": null,
+        "function_rva": null,
+        "params_size": 16,
+        "parameters": [
+          {
+            "name": "hidespot",
+            "type": "class URBHidespotComponent*",
+            "offset": 0,
+            "size": 8
+          },
+          {
+            "name": "peekingAnim",
+            "type": "class UAnimSequence*",
+            "offset": 8,
+            "size": 8
+          }
+        ],
+        "layout_known": true,
+        "flags_known": true
+      },
+      "validated": true
+    }
+  ],
+  "excluded": [
+    "ValveIndex_* strings are OpenVR input noise, not valve gameplay verbs.",
+    "Server_Cheat_* and Client_Cheat_* are debug-only and must never be mapped.",
+    "BP_*, Event_*, On*, and Multicast_* names are typically notifications; promote only after live reflection."
+  ],
+  "unresolved_gaps": [
+    "Any live ProcessEvent/vtable-shadow hook validation under EAC; injection attempt failed with VirtualAllocEx error 5.",
+    "Runtime dispatch opt-ins are implemented but not exercised in a solo/private session.",
+    "Generic interaction targets must be supplied with VRC_OUTLAST_TARGET_HINT during live validation."
+  ],
+  "validation": {
+    "exe_sha256": "d62df76ce8cb1c58391fbc8a1649945bc91178d27dfad2f98eaab5c907d6f27e",
+    "expected_sha256": "d62df76ce8cb1c58391fbc8a1649945bc91178d27dfad2f98eaab5c907d6f27e",
+    "build_match": true,
+    "pdb": null,
+    "process_event_symbols": [],
+    "process_event_static_rva": "0x01A2C750",
+    "process_event_reflected_rva": "0x01A2C750",
+    "process_event_vtable_index": "0x00000044",
+    "process_event_confirmed": true,
+    "reflection_build_sha256": "d62df76ce8cb1c58391fbc8a1649945bc91178d27dfad2f98eaab5c907d6f27e",
+    "reflection_build_match": true,
+    "globals": {
+      "GUObjectArray": "0x146F83CF8",
+      "GNames": "0x146F27F00",
+      "GWorld": "0x1470FBD60",
+      "FName::ToString": null
+    },
+    "offsets": {
+      "UObject::NamePrivate": "0x18",
+      "UObject::Class": "0x10",
+      "UObject::VTable": "0x0",
+      "UField::Next": "0x28",
+      "UStruct::Children": "0x48",
+      "UFunction::FName": "0x18",
+      "UFunction::FunctionFlags": "0xB0",
+      "UFunction::NumParms": "0xB4",
+      "UFunction::ParmsSize": "0xB6",
+      "TUObjectArray::Objects": "0x0",
+      "TUObjectArray::NumElements": "0x14",
+      "TUObjectArray::NumChunks": "0x1C",
+      "FUObjectItem::Object": "0x0",
+      "FUObjectItem::Size": "0x18",
+      "FNamePool::Blocks": "0x10",
+      "FNameEntry::Name": "0x2"
+    },
+    "reasons": [],
+    "required_roles": [
+      "door_operation_rpc",
+      "generic_interact_end",
+      "generic_interact_start",
+      "item_drop",
+      "item_pickup"
+    ],
+    "missing_required_roles": []
+  }
+}

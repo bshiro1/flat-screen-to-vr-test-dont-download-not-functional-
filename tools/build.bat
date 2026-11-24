@@ -5,10 +5,13 @@ set CONFIG=%1
 if "%CONFIG%"=="" set CONFIG=Debug
 
 set CMAKE=%LOCALAPPDATA%\CMake\cmake-3.31.6-windows-x86_64\bin\cmake.exe
+if not exist "%CMAKE%" set CMAKE=C:\Program Files\CMake\bin\cmake.exe
 set NINJA=%LOCALAPPDATA%\Ninja\ninja.exe
 set VCVARS="C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
 set VSWHERE="C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"
-set PROJECT=C:\Users\shiro\vr-game-converter
+:: Derive the project root from this script's location (tools\ -> project\).
+:: The old hard-coded parent path had no CMakeLists.txt and could never configure.
+set PROJECT=%~dp0..
 set BUILD=%PROJECT%\build\%CONFIG%
 
 echo === VR Game Converter Build (%CONFIG%) ===
@@ -76,7 +79,7 @@ echo Building...
 if %ERRORLEVEL% equ 0 (
     echo.
     echo === Build Succeeded ===
-    echo Output: %BUILD%\bin\vr_converter.dll
+    echo Output: %BUILD%\vr_converter.dll
     dir /s "%BUILD%\*.dll"
 ) else (
     echo Build failed!
